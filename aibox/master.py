@@ -15,6 +15,7 @@ sys.path.append('/unidepth')
 import argparse
 import json
 import controller
+import torch
 from bracelet import connect_belt, BraceletController
 
 
@@ -57,7 +58,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     participant = args.participant
     condition = args.condition
-    metric = not args.relative
+    metric = (not args.relative) and torch.cuda.is_available()
     mock_navigate = args.mock_navigate
     save_video = args.save_video
     
