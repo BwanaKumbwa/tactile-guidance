@@ -8,6 +8,7 @@ This script is using code from the following sources:
 
 import sys
 from pathlib import Path
+import os
 
 # Use the project file packages instead of the conda packages, i.e. add to system path for import
 file = Path(__file__).resolve()
@@ -176,13 +177,10 @@ class TaskController(AutoAssign):
 
         self.output_data.append(output_data_row)
 
-        print(self.output_data)
-
     
     def save_output_data(self):
 
         df = pd.DataFrame(self.output_data)
-        print(df)
         df.to_csv(self.output_path + f"{self.condition}_participant_{self.participant}.csv", index=False)
 
 
@@ -326,15 +324,28 @@ class TaskController(AutoAssign):
             elif pressed_key == ord('t'): # incorrect target was reached by the participant
                 print("WRONG TARGET")
             
-            if self.obj_index >= len(self.target_objs) - 1:
-                print("ALL TARGETS COVERED")
-                self.save_output_data()
-                return "break"
+            if not self.manual_entry:
+                if self.obj_index >= len(self.target_objs) - 1:
+                    print("ALL TARGETS COVERED")
+                    self.save_output_data()
+                    return "break"
+                else:
+                    print("MOVING TO NEXT TARGET")
+                    self.obj_index += 1
+                    self.ready_for_next_trial = True
+                    self.class_target_obj = -1
             else:
                 print("MOVING TO NEXT TARGET")
-                self.obj_index += 1
                 self.ready_for_next_trial = True
-                self.class_target_obj = -1
+                '''end = input('Do you want to end? y/n')
+                if end.lower() in ('y', 'yes'):
+                    print("ALL TARGETS COVERED")
+                    self.save_output_data()
+                    return "break"
+                else:
+                    print("MOVING TO NEXT TARGET")
+                    self.obj_index += 1
+                    self.ready_for_next_trial = True'''
 
         # start next trial
         elif pressed_key == ord('s') and self.ready_for_next_trial:
@@ -410,9 +421,11 @@ class TaskController(AutoAssign):
 
             # Start timer for FPS measure
             start = time.perf_counter()
-
             # Setup saving and visualization
-            p, im0 = Path(path[0]), im0s[0].copy() # idx 0 is for first source (and we only have one source)
+            if self.dataset.mode == 'image':
+                p, im0 = Path(path), im0s.copy() # ?
+            else:
+                p, im0 = Path(path[0]), im0s[0].copy() # idx 0 is for first source (and we only have one source)
             #save_path = str(save_dir / p.name) # p.name is the source, i.e. 0
             save_path = str(save_dir) # the file name is already created in run()
             annotator = Annotator(im0, line_width=self.line_thickness, example=str(self.names_obj))
@@ -529,18 +542,22 @@ class TaskController(AutoAssign):
                 if self.manual_entry:
                     user_in = "n"
                     while user_in == "n":
-                        print("These are the available objects:")
-                        print(coco_labels)
-                        target_obj_verb = input('Enter the object you want to target: ')
+                        print(f"These are the available objects:\n{coco_labels}")
+                        target_obj_verb = input('Enter the object key you want to target: ')
+                        user_in = "y" # remains of bad coding practice
 
-                        if target_obj_verb in coco_labels.values():
-                            user_in = input("Selected object is " + target_obj_verb + ". Correct? [y,n]")
+                        """if target_obj_verb in coco_labels.values():
                             self.class_target_obj = next(key for key, value in coco_labels.items() if value == target_obj_verb)
                             file = f'resources/sound/{target_obj_verb}.mp3'
                             #playsound(str(file))
-                            # Start trial time measure (end in navigate_hand(...))
+                            # Start trial time measure (end in navigate_hand(...))"""
+                        if int(target_obj_verb) in coco_labels.keys():
+                            self.class_target_obj = int(target_obj_verb)
+                            #file = f'resources/sound/{coco_labels[target_obj_verb]}.mp3'
+                            #playsound(str(file))
                         else:
                             print(f'The object {target_obj_verb} is not in the list of available targets. Please reselect.')
+                            user_in = "n"
                 else:
                     target_obj_verb = self.target_objs[self.obj_index]
                     self.class_target_obj = next(key for key, value in coco_labels.items() if value == target_obj_verb)
@@ -694,7 +711,11 @@ class TaskController(AutoAssign):
 
         try:
             #self.dataset = LoadStreams(source, img_size=self.imgsz, stride=self.stride_obj, auto=True, vid_stride=self.vid_stride)
-            self.dataset = LoadStreams(source, img_size=640)
+            #self.dataset = LoadStreams(source, img_size=640)
+            if os.path.isdir(source) or os.path.isfile(source):
+                self.dataset = LoadImages(source, img_size=640)
+            else:
+                self.dataset = LoadStreams(source)
 
         except AssertionError:
             while True:
