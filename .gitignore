@@ -152,5 +152,6 @@ aibox/example_gpu.sh
 aibox/UOS_HPC_Guide.md
 aibox/resources/datasets/
 aibox/resources/media/
+aibox/resources/old_code/
 aibox/experiment/forms/
 aibox/results/

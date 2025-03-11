@@ -15,6 +15,7 @@ sys.path.append('/unidepth')
 import argparse
 import json
 import controller
+import torch
 from bracelet import connect_belt, BraceletController
 
 
@@ -57,7 +58,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     participant = args.participant
     condition = args.condition
-    metric = not args.relative
+    metric = (not args.relative) and torch.cuda.is_available()
     mock_navigate = args.mock_navigate
     save_video = args.save_video
     
@@ -87,13 +88,16 @@ if __name__ == '__main__':
         print('Calibration intensities loaded succesfully.')
 
     except:
+        baseline_value = 50
         while True:
-            continue_with_baseline = input('Error while loading the calibration file. Do you want to continue with baseline intensity of 50 for each vibromotor? (y/n)')
+            #continue_with_baseline = input('Error while loading the calibration file. Do you want to continue with baseline intensity of 50 for each vibromotor? (y/n)')
+            print('Error while loading the calibration file. Continuing with baseline intensity of 50 for each vibromotor.')
+            continue_with_baseline = 'y'
             if continue_with_baseline == 'y':
-                participant_vibration_intensities = {'bottom': 50,
-                                                        'top': 50,
-                                                        'left': 50,
-                                                        'right': 50,}
+                participant_vibration_intensities = {'bottom': baseline_value,
+                                                        'top': baseline_value,
+                                                        'left': baseline_value,
+                                                        'right': baseline_value,}
                 break
             elif continue_with_baseline == 'n':
                 print('Please try to re-import the calibration file. Aborting.')
@@ -125,7 +129,8 @@ if __name__ == '__main__':
                         weights_hand=weights_hand,  # model_obj path or triton URL
                         weights_tracker=weights_tracker,
                         weights_depth_estimator=weights_depth_estimator,
-                        source=source,  # file/dir/URL/glob/screen/0(webcam)
+                        #source='images/',  # file/dir/URL/glob/screen/0(webcam)
+                        source=source,
                         iou_thres=0.45,  # NMS IOU threshold
                         max_det=1000,  # maximum detections per image
                         device='',  # cuda device, i.e. 0 or 0,1,2,3 or cpu
@@ -152,7 +157,7 @@ if __name__ == '__main__':
                         half=False,  # use FP16 half-precision inference
                         dnn=False,  # use OpenCV DNN for ONNX inference
                         vid_stride=1,  # video frame-rate stride_obj
-                        manual_entry=False, # True means you will control the exp manually versus the standard automatic running
+                        manual_entry=True, # True means you will control the exp manually versus the standard automatic running
                         run_object_tracker=run_object_tracker,
                         run_depth_estimator=run_depth_estimator,
                         mock_navigate=mock_navigate,
