@@ -38,7 +38,7 @@ def connect_belt():
 
 class BraceletController:
 
-    def __init__(self, vibration_intensities = {'bottom': 50, 'top': 50, 'left': 50, 'right': 50}):
+    def __init__(self, vibration_intensities = {'bottom': 50, 'top': 50, 'left': 50, 'right': 50}, navigation_type = 0):
         self.vibration_intensities = vibration_intensities
         self.searching = False
         self.prev_hand = None
@@ -62,6 +62,7 @@ class BraceletController:
         self.target_class_track_ids = []
         self.target_object_track_ids = []
         self.target_position = []
+        self.navigation_type = navigation_type
 
 
     def choose_detection(self, bboxes, previous_bbox=None, hand=False, w=1920, h=1080):
@@ -168,59 +169,70 @@ class BraceletController:
         max_bottom_intensity, max_top_intensity, max_left_intensity, max_right_intensity = vibration_intensities["bottom"], vibration_intensities["top"], vibration_intensities["left"], vibration_intensities["right"]
 
         # Calculate motor intensities based on the angle
-        # Octants
-        if 0 <= angle < 45:
-            right_intensity = max_right_intensity
-            top_intensity = (angle - 0) / 45 * max_top_intensity
-        elif angle == 45:
-            right_intensity = max_right_intensity
-            top_intensity = max_top_intensity
-        elif 45 < angle < 90:
-            right_intensity = (90 - angle) / 45 * max_right_intensity
-            top_intensity = max_top_intensity
-        elif 90 <= angle < 135:
-            top_intensity = max_top_intensity
-            left_intensity = (angle - 90) / 45 * max_left_intensity
-        elif angle == 135:
-            top_intensity = max_top_intensity
-            left_intensity = max_left_intensity
-        elif 135 < angle < 180:
-            top_intensity = (180 - angle) / 45 * max_top_intensity
-            left_intensity = max_left_intensity
-        elif 180 <= angle < 225:
-            left_intensity = max_left_intensity
-            bottom_intensity = (angle - 180) / 45 * max_bottom_intensity
-        elif angle == 225:
-            left_intensity = max_left_intensity
-            bottom_intensity = max_bottom_intensity
-        elif 225 < angle < 270:
-            left_intensity = (270 - angle) / 45 * max_left_intensity
-            bottom_intensity = max_bottom_intensity
-        elif 270 <= angle < 315:
-            bottom_intensity = max_bottom_intensity
-            right_intensity = (angle - 270) / 45 * max_right_intensity
-        elif angle == 315:
-            bottom_intensity = max_bottom_intensity
-            right_intensity = max_right_intensity
-        elif 315 < angle <= 360:
-            bottom_intensity = (360 - angle) / 45 * max_bottom_intensity
-            right_intensity = max_right_intensity
-
-        '''
-        # Quadrants
-        if 0 <= angle < 90:
-            right_intensity = (90 - angle) / 90 * max_right_intensity
-            top_intensity = angle / 90 * max_top_intensity
-        elif 90 <= angle < 180:
-            top_intensity = (180 - angle) / 90 * max_top_intensity
-            left_intensity = (angle - 90) / 90 * max_left_intensity
-        elif 180 <= angle < 270:
-            left_intensity = (270 - angle) / 90 * max_left_intensity
-            bottom_intensity = (angle - 180) / 90 * max_bottom_intensity
-        elif 270 <= angle < 360:
-            bottom_intensity = (360 - angle) / 90 * max_bottom_intensity
-            right_intensity = (angle - 270) / 90 * max_right_intensity
-        '''
+        if self.navigation_type == 0:
+            # Default (horizontal -> vertical)
+            if 0 <= angle < 80:
+                right_intensity = max_right_intensity
+            elif 80 <= angle < 100:
+                top_intensity = max_top_intensity
+            elif 100 <= angle < 260:
+                left_intensity = max_left_intensity
+            elif 260 <= angle < 280:
+                bottom_intensity =  max_bottom_intensity
+            elif 280 <= angle < 360:
+                right_intensity = max_right_intensity
+        elif self.navigation_type == 1:
+            # Octants (simultaneous vibrations)
+            if 0 <= angle < 45:
+                right_intensity = max_right_intensity
+                top_intensity = (angle - 0) / 45 * max_top_intensity
+            elif angle == 45:
+                right_intensity = max_right_intensity
+                top_intensity = max_top_intensity
+            elif 45 < angle < 90:
+                right_intensity = (90 - angle) / 45 * max_right_intensity
+                top_intensity = max_top_intensity
+            elif 90 <= angle < 135:
+                top_intensity = max_top_intensity
+                left_intensity = (angle - 90) / 45 * max_left_intensity
+            elif angle == 135:
+                top_intensity = max_top_intensity
+                left_intensity = max_left_intensity
+            elif 135 < angle < 180:
+                top_intensity = (180 - angle) / 45 * max_top_intensity
+                left_intensity = max_left_intensity
+            elif 180 <= angle < 225:
+                left_intensity = max_left_intensity
+                bottom_intensity = (angle - 180) / 45 * max_bottom_intensity
+            elif angle == 225:
+                left_intensity = max_left_intensity
+                bottom_intensity = max_bottom_intensity
+            elif 225 < angle < 270:
+                left_intensity = (270 - angle) / 45 * max_left_intensity
+                bottom_intensity = max_bottom_intensity
+            elif 270 <= angle < 315:
+                bottom_intensity = max_bottom_intensity
+                right_intensity = (angle - 270) / 45 * max_right_intensity
+            elif angle == 315:
+                bottom_intensity = max_bottom_intensity
+                right_intensity = max_right_intensity
+            elif 315 < angle <= 360:
+                bottom_intensity = (360 - angle) / 45 * max_bottom_intensity
+                right_intensity = max_right_intensity
+        elif self.navigation_type == 2:
+            # Quadrants (simultaneous vibrations)
+            if 0 <= angle < 90:
+                right_intensity = (90 - angle) / 90 * max_right_intensity
+                top_intensity = angle / 90 * max_top_intensity
+            elif 90 <= angle < 180:
+                top_intensity = (180 - angle) / 90 * max_top_intensity
+                left_intensity = (angle - 90) / 90 * max_left_intensity
+            elif 180 <= angle < 270:
+                left_intensity = (270 - angle) / 90 * max_left_intensity
+                bottom_intensity = (angle - 180) / 90 * max_bottom_intensity
+            elif 270 <= angle < 360:
+                bottom_intensity = (360 - angle) / 90 * max_bottom_intensity
+                right_intensity = (angle - 270) / 90 * max_right_intensity
 
         return int(right_intensity), int(left_intensity), int(top_intensity), int(bottom_intensity), 50
 

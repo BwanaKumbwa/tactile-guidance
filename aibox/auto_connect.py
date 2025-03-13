@@ -36,7 +36,7 @@ def interactive_belt_connect(belt_controller):
     #print("Connect via Bluetooth or USB? [b,u]", end="")
     #while interface == "":
     #    interface = input()
-    interface = 'b'
+    interface = 'u'
     if interface.lower() == "b":
         # Scan for advertising belt
         with pybelt.belt_scanner.create() as scanner:

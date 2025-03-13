@@ -571,6 +571,7 @@ class TaskController(AutoAssign):
 
             # Navigate the hand based on information from last frame and current frame detections
             if not grasped:
+                # tracks are not used in the outputs here, so if an object is lost, it is actually lost in the navigation and not predicted from the tracker
                 grasped, curr_target = self.bracelet_controller.navigate_hand(self.belt_controller, outputs, self.class_target_obj, [hand + index_add for hand in self.classes_hand], depth_img, self.participant_vibration_intensities, self.metric)
             else: # if grasping signal was sent stop navigation process and reset target
                 if vibration_timer is None:
