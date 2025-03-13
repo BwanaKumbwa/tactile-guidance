@@ -155,3 +155,4 @@ aibox/resources/media/
 aibox/resources/old_code/
 aibox/experiment/forms/
 aibox/results/
+aibox/weights/

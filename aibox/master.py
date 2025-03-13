@@ -63,11 +63,12 @@ if __name__ == '__main__':
     save_video = args.save_video
     
     # Parameters
-    weights_obj = 'yolov5s.pt'  # Object model weights path
-    weights_hand = 'hand.pt' # Hands model weights path
+    weights_obj = 'weights/yolov5s.pt'  # Object model weights path
+    #weights_hand = 'weights/hand_v5_flosener.pt'
+    weights_hand = 'weights/hand_v5_optivist.pt' # Hands model weights path
 
     run_object_tracker = True if condition == 'multiple_objects' else False
-    weights_tracker = 'osnet_x0_25_market1501.pt' # ReID weights path
+    weights_tracker = 'weights/osnet_x0_25_market1501.pt' # ReID weights path
 
     run_depth_estimator = True if condition == 'depth_navigation' else False
     weights_depth_estimator = 'v2-vits14' if metric else 'midas_v21_384' # v2-vits14 (UniDepth only supports cuda), v1-cnvnxtl; midas_v21_384 (MiDaS/ZoeDepth also supports cpu), dpt_levit_224
@@ -88,10 +89,10 @@ if __name__ == '__main__':
         print('Calibration intensities loaded succesfully.')
 
     except:
-        baseline_value = 50
+        baseline_value = 30
         while True:
             #continue_with_baseline = input('Error while loading the calibration file. Do you want to continue with baseline intensity of 50 for each vibromotor? (y/n)')
-            print('Error while loading the calibration file. Continuing with baseline intensity of 50 for each vibromotor.')
+            print(f'Error while loading the calibration file. Continuing with baseline intensity of {baseline_value} for each vibromotor.')
             continue_with_baseline = 'y'
             if continue_with_baseline == 'y':
                 participant_vibration_intensities = {'bottom': baseline_value,
