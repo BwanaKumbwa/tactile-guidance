@@ -171,7 +171,7 @@ class BraceletController:
         # Calculate motor intensities based on the angle
         if self.navigation_type == 0:
             # Default (horizontal -> vertical)
-            if 0 <= angle < 80:
+            if 0 <= angle < 80 or 280 <= angle < 360:
                 right_intensity = max_right_intensity
             elif 80 <= angle < 100:
                 top_intensity = max_top_intensity
@@ -179,8 +179,6 @@ class BraceletController:
                 left_intensity = max_left_intensity
             elif 260 <= angle < 280:
                 bottom_intensity =  max_bottom_intensity
-            elif 280 <= angle < 360:
-                right_intensity = max_right_intensity
         elif self.navigation_type == 1:
             # Octants (simultaneous vibrations)
             if 0 <= angle < 45:
