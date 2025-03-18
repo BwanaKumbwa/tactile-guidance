@@ -63,6 +63,11 @@ class BraceletController:
         self.target_object_track_ids = []
         self.target_position = []
         self.navigation_type = navigation_type
+        self.was_guiding = False
+        self.prev_right_intensity = 0
+        self.prev_left_intensity = 0
+        self.prev_top_intensity = 0
+        self.prev_bot_intensity = 0
 
 
     def choose_detection(self, bboxes, previous_bbox=None, hand=False, w=1920, h=1080):
@@ -502,8 +507,8 @@ class BraceletController:
             self.frozen = False
             self.is_inside = False
             self.is_touched = False
-            if belt_controller and self.vibrate:
-                belt_controller.stop_vibration()
+            #if belt_controller and self.vibrate:
+            #    belt_controller.stop_vibration()
 
         # 1. Grasping
         if overlapping:
@@ -534,6 +539,14 @@ class BraceletController:
         # 2. Guidance
         if hand is not None and target is not None:
             self.searching = True
+
+            self.timer = 0
+
+            self.was_guiding = True
+            self.prev_right_intensity = right_int
+            self.prev_left_intensity = left_int
+            self.prev_top_intensity = top_int
+            self.prev_bot_intensity = bot_int
 
             if belt_controller and self.vibrate:
                 belt_controller.send_vibration_command(
@@ -586,7 +599,70 @@ class BraceletController:
                 )
             return overlapping, frozen_target
 
-        # 3. Target is located and hand can be moved into the frame
+        # 3. Guidance for several frames if target or hand are lost
+        if self.was_guiding:
+            self.searching = True
+
+            if belt_controller and self.vibrate:
+                belt_controller.send_vibration_command(
+                    channel_index=0,
+                    pattern=BeltVibrationPattern.CONTINUOUS,
+                    intensity=self.prev_right_intensity,
+                    orientation_type=BeltOrientationType.ANGLE,
+                    orientation=120,
+                    pattern_iterations=None,
+                    pattern_period=100,
+                    pattern_start_time=0,
+                    exclusive_channel=False,
+                    clear_other_channels=False
+                )
+                belt_controller.send_vibration_command(
+                    channel_index=1,
+                    pattern=BeltVibrationPattern.CONTINUOUS,
+                    intensity=self.prev_left_intensity,
+                    orientation_type=BeltOrientationType.ANGLE,
+                    orientation=45,
+                    pattern_iterations=None,
+                    pattern_period=100,
+                    pattern_start_time=0,
+                    exclusive_channel=False,
+                    clear_other_channels=False
+                )
+                belt_controller.send_vibration_command(
+                    channel_index=2,
+                    pattern=BeltVibrationPattern.CONTINUOUS,
+                    intensity=self.prev_top_intensity,
+                    orientation_type=BeltOrientationType.ANGLE,
+                    orientation=90,
+                    pattern_iterations=None,
+                    pattern_period=100,
+                    pattern_start_time=0,
+                    exclusive_channel=False,
+                    clear_other_channels=False
+                )
+                belt_controller.send_vibration_command(
+                    channel_index=3,
+                    pattern=BeltVibrationPattern.CONTINUOUS,
+                    intensity=self.prev_bot_intensity,
+                    orientation_type=BeltOrientationType.ANGLE,
+                    orientation=60,
+                    pattern_iterations=None,
+                    pattern_period=100,
+                    pattern_start_time=0,
+                    exclusive_channel=False,
+                    clear_other_channels=False
+                )
+
+            self.timer += 1
+            if self.timer >= 40: # roughly 2 seconds with experimenter laptop in grasping task with cable (covers more FOV for higher chance of re-detection)
+                self.searching = True
+                self.was_guiding = False
+                self.timer = 0
+                if belt_controller and self.vibrate:
+                    belt_controller.stop_vibration()
+            return overlapping, None
+        
+        # 4. Target is located and hand can be moved into the frame
         if target is not None:
             self.timer += 1
             if belt_controller and self.vibrate and self.searching:
@@ -612,7 +688,7 @@ class BraceletController:
                 self.timer = 0
             return overlapping, target
 
-        # 4. Target is not in the frame yet.
+        # 5. Target is not in the frame yet.
         else:
             self.timer = 0
             self.searching = True
