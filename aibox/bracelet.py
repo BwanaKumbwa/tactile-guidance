@@ -533,6 +533,7 @@ class BraceletController:
                 self.vibrate = False
                 self.prev_target = None
                 frozen_target = None
+                self.was_guiding = False
             print("G R A S P !")
             return overlapping, frozen_target
 
