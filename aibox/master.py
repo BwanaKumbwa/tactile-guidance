@@ -16,6 +16,7 @@ import argparse
 import json
 import controller
 import torch
+import cv2
 from bracelet import connect_belt, BraceletController
 
 
@@ -95,6 +96,7 @@ if __name__ == '__main__':
             source = available_sources[0]
     else:
         source = available_sources[0]
+
     belt_controller = None
 
     # Experiment controls
@@ -108,22 +110,10 @@ if __name__ == '__main__':
         with open('results/calibration/' + f"calibration_participant_{participant}.json") as file:
             participant_vibration_intensities = json.load(file)
         print('Calibration intensities loaded succesfully.')
-
     except:
         baseline_value = 30
-        while True:
-            #continue_with_baseline = input('Error while loading the calibration file. Do you want to continue with baseline intensity of 50 for each vibromotor? (y/n)')
-            print(f'Error while loading the calibration file. Continuing with baseline intensity of {baseline_value} for each vibromotor.')
-            continue_with_baseline = 'y'
-            if continue_with_baseline == 'y':
-                participant_vibration_intensities = {'bottom': baseline_value,
-                                                        'top': baseline_value,
-                                                        'left': baseline_value,
-                                                        'right': baseline_value,}
-                break
-            elif continue_with_baseline == 'n':
-                print('Please try to re-import the calibration file. Aborting.')
-                sys.exit()
+        print(f'\nError while loading the calibration file. Continuing with baseline intensity of {baseline_value} for each vibromotor.')
+        participant_vibration_intensities = {'bottom': baseline_value, 'top': baseline_value, 'left': baseline_value, 'right': baseline_value,}
 
     print(f'\nLOADING CAMERA AND BRACELET')
 

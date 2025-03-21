@@ -331,22 +331,13 @@ class TaskController(AutoAssign):
                     self.save_output_data()
                     return "break"
                 else:
-                    print("MOVING TO NEXT TARGET")
+                    print("MOVING TO NEXT TARGET (S to start trial)")
                     self.obj_index += 1
                     self.ready_for_next_trial = True
                     self.class_target_obj = -1
             else:
-                print("MOVING TO NEXT TARGET")
+                print("MOVING TO NEXT TARGET (S to start trial)")
                 self.ready_for_next_trial = True
-                '''end = input('Do you want to end? y/n')
-                if end.lower() in ('y', 'yes'):
-                    print("ALL TARGETS COVERED")
-                    self.save_output_data()
-                    return "break"
-                else:
-                    print("MOVING TO NEXT TARGET")
-                    self.obj_index += 1
-                    self.ready_for_next_trial = True'''
 
         # start next trial
         elif pressed_key == ord('s') and self.ready_for_next_trial:
@@ -407,10 +398,15 @@ class TaskController(AutoAssign):
         outputs = []
         prev_outputs = np.array([])
 
+        self.obj_index = 0
         self.ready_for_next_trial = True
         self.target_entered = True # counter intuitive, but setting as True to wait for press of "s" button to start first trial
         self.class_target_obj = -1 # placeholder value not assigned to any specific object
         self.orig_classes_obj = self.classes_obj
+        manual_experiment_msg = "The experiment will be run manually. You will enter the desired target for each run yourself."
+        automatic_experiment_msg = f'The experiment will be run automatically. The selected target objects, in sequence, are:\n{self.target_objs}'
+        print(manual_experiment_msg) if self.manual_entry else print(automatic_experiment_msg)
+        
 
         self.trial_start_time = 'NA'
         self.trial_end_time = 'NA'
@@ -541,24 +537,20 @@ class TaskController(AutoAssign):
             # Get the target object class
             if not self.target_entered:
                 if self.manual_entry:
-                    user_in = "n"
-                    while user_in == "n":
-                        print(f"These are the available objects:\n{coco_labels}")
-                        target_obj_verb = input('Enter the object key you want to target: ')
-                        user_in = "y" # remains of bad coding practice
+                    print(f"These are the available objects:\n{coco_labels}")
+                    target_obj_verb = input('Enter the object key you want to target: ')
 
-                        """if target_obj_verb in coco_labels.values():
-                            self.class_target_obj = next(key for key, value in coco_labels.items() if value == target_obj_verb)
-                            file = f'resources/sound/{target_obj_verb}.mp3'
-                            #playsound(str(file))
-                            # Start trial time measure (end in navigate_hand(...))"""
-                        if int(target_obj_verb) in coco_labels.keys():
-                            self.class_target_obj = int(target_obj_verb)
-                            #file = f'resources/sound/{coco_labels[target_obj_verb]}.mp3'
-                            #playsound(str(file))
-                        else:
-                            print(f'The object {target_obj_verb} is not in the list of available targets. Please reselect.')
-                            user_in = "n"
+                    """if target_obj_verb in coco_labels.values():
+                        self.class_target_obj = next(key for key, value in coco_labels.items() if value == target_obj_verb)
+                        file = f'resources/sound/{target_obj_verb}.mp3'
+                        #playsound(str(file))
+                        # Start trial time measure (end in navigate_hand(...))"""
+                    if int(target_obj_verb) in coco_labels.keys():
+                        self.class_target_obj = int(target_obj_verb)
+                        #file = f'resources/sound/{coco_labels[target_obj_verb]}.mp3'
+                        #playsound(str(file))
+                    else:
+                        print(f'The object {target_obj_verb} is not in the list of available targets. Please reselect.')
                 else:
                     target_obj_verb = self.target_objs[self.obj_index]
                     self.class_target_obj = next(key for key, value in coco_labels.items() if value == target_obj_verb)
@@ -672,14 +664,6 @@ class TaskController(AutoAssign):
     @smart_inference_mode()
     def run(self):
 
-        # Experiment setup
-        if not self.manual_entry:
-            target_objs = self.target_objs
-            self.obj_index = 0
-            print(f'The experiment will be run automatically. The selected target objects, in sequence, are:\n{target_objs}')
-        else:
-            print('The experiment will be run manually. You will enter the desired target for each run yourself.')
-
         horizontal_in, vertical_in = False, False
         self.target_entered = False
         #play_start()  # play welcome sound
@@ -713,22 +697,20 @@ class TaskController(AutoAssign):
 
         try:
             #self.dataset = LoadStreams(source, img_size=self.imgsz, stride=self.stride_obj, auto=True, vid_stride=self.vid_stride)
-            #self.dataset = LoadStreams(source, img_size=640)
             if os.path.isdir(source) or os.path.isfile(source):
                 self.dataset = LoadImages(source, img_size=640)
             else:
                 self.dataset = LoadStreams(source)
 
         except AssertionError:
-            while True:
-                change_camera = input(f'Failed to open camera with index {source}. Do you want to continue with webcam? (y/n)')
-                if change_camera == 'y':
-                    source = '0'
-                    #self.dataset = LoadStreams(source, img_size=self.imgsz, stride=self.stride_obj, auto=True, vid_stride=self.vid_stride)
-                    self.dataset = LoadStreams(source, img_size=640)
-                    break
-                elif change_camera == 'n':
-                    exit()
+            change_camera = input(f'Failed to open camera with index {source}. Do you want to continue with source 0 (most likely the webcam)? (y/n)')
+            if change_camera == 'y':
+                source = '0'
+                #self.dataset = LoadStreams(source, img_size=self.imgsz, stride=self.stride_obj, auto=True, vid_stride=self.vid_stride)
+                self.dataset = LoadStreams(source, img_size=640)
+                #break
+            elif change_camera == 'n':
+                exit()
 
         self.bs = len(self.dataset)
         vid_path, vid_writer = [None] * self.bs, [None] * self.bs
@@ -755,6 +737,9 @@ class TaskController(AutoAssign):
         self.warmup_model(self.model_hand)
         if self.run_object_tracker:
             self.warmup_model(self.tracker.model,'tracker')
+
+        # Mock navigation printouts in bracelet.py ?
+        self.bracelet_controller.mock_navigate = True if self.mock_navigate else False
 
         # Start experiment loop
         self.experiment_loop(save_dir, save_img, index_add, vid_path, vid_writer)

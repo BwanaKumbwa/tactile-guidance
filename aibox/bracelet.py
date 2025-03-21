@@ -68,6 +68,7 @@ class BraceletController:
         self.prev_left_intensity = 0
         self.prev_top_intensity = 0
         self.prev_bot_intensity = 0
+        self.mock_navigate = False
 
 
     def choose_detection(self, bboxes, previous_bbox=None, hand=False, w=1920, h=1080):
@@ -475,33 +476,6 @@ class BraceletController:
                 overlapping, self.frozen_x, self.frozen_y, self.frozen_w, self.frozen_h, self.frozen = self.check_overlap(hand, frozenBB, self.frozen)
                 frozen_target[:4] = frozenBB
 
-            # Move backwards if there is obstacle between hand and target (only used with depth map)
-            '''
-            if depth_int == -1:
-                print('Move back!')
-                self.searching = True
-
-                if belt_controller and self.vibrate:
-                    belt_controller.stop_vibration()
-                    belt_controller.send_pulse_command(
-                        channel_index=1,
-                        orientation_type=BeltOrientationType.BINARY_MASK,
-                        orientation=0b101000,
-                        intensity=50,
-                        on_duration_ms=150,
-                        pulse_period=500,
-                        pulse_iterations=5,
-                        series_period=5000,
-                        series_iterations=1,
-                        timer_option=BeltVibrationTimerOption.RESET_TIMER,
-                        exclusive_channel=False,
-                        clear_other_channels=False
-                    )
-
-                print('MOVE BACK')
-                return overlapping, frozen_target
-            '''
-
         elif hand is None:
             frozen_target = None
             self.frozen = False
@@ -509,6 +483,7 @@ class BraceletController:
             self.is_touched = False
             #if belt_controller and self.vibrate:
             #    belt_controller.stop_vibration()
+
 
         # 1. Grasping
         if overlapping:
@@ -534,7 +509,8 @@ class BraceletController:
                 self.prev_target = None
                 frozen_target = None
                 self.was_guiding = False
-            print("G R A S P !")
+
+            print("GRASP! Success? (Y/N)")
             return overlapping, frozen_target
 
         # 2. Guidance
@@ -598,6 +574,9 @@ class BraceletController:
                     exclusive_channel=False,
                     clear_other_channels=False
                 )
+
+            if self.mock_navigate:
+                print(f'Normal Guidance; right: {right_int}, left: {left_int}, top: {top_int}, bot: {bot_int}')
             return overlapping, frozen_target
 
         # 3. Guidance for several frames if target or hand are lost
@@ -661,6 +640,9 @@ class BraceletController:
                 self.timer = 0
                 if belt_controller and self.vibrate:
                     belt_controller.stop_vibration()
+
+            if self.mock_navigate:
+                print(f'Smoothened Guidance; right: {self.prev_right_intensity}, left: {self.prev_left_intensity}, top: {self.prev_top_intensity}, bot: {self.prev_bot_intensity}')
             return overlapping, None
         
         # 4. Target is located and hand can be moved into the frame
@@ -687,6 +669,9 @@ class BraceletController:
             if self.timer >= 50:
                 self.searching = True
                 self.timer = 0
+
+            if self.mock_navigate:
+                print("4. Target located")
             return overlapping, target
 
         # 5. Target is not in the frame yet.
@@ -695,4 +680,8 @@ class BraceletController:
             self.searching = True
             if belt_controller and self.vibrate:
                 belt_controller.stop_vibration()
+
+            if self.mock_navigate:
+                #print("5. Target not located")
+                pass
             return overlapping, None
