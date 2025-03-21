@@ -73,7 +73,28 @@ if __name__ == '__main__':
     run_depth_estimator = True if condition == 'depth_navigation' else False
     weights_depth_estimator = 'v2-vits14' if metric else 'midas_v21_384' # v2-vits14 (UniDepth only supports cuda), v1-cnvnxtl; midas_v21_384 (MiDaS/ZoeDepth also supports cpu), dpt_levit_224
 
-    source = '0' # image/video path or camera source (0 = webcam, 1 = external, ...)
+    # Check available camera sources
+    available_sources = []
+    for s in range(100):
+        cap = cv2.VideoCapture(s)
+        if cap.isOpened():
+            available_sources.append(str(s))
+            cap.release()
+        else:
+            break
+
+    # Select source
+    select_source_manually = True
+    if select_source_manually:
+        try:
+            source = input(f'Available sources: {available_sources}. Please select the camera source: ')
+            if source not in available_sources:
+                raise ValueError
+        except ValueError:
+            print(f'Invalid source. Defaulting to first available source ({available_sources[0]}).')
+            source = available_sources[0]
+    else:
+        source = available_sources[0]
     belt_controller = None
 
     # Experiment controls
