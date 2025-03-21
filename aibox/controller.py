@@ -314,6 +314,7 @@ class TaskController(AutoAssign):
             self.classes_obj = self.orig_classes_obj
 
             self.bracelet_controller.frozen = False
+            self.bracelet_controller.was_guiding = False
             
             if pressed_key == ord('y'): # participant successfully reached the target
                 print("TRIAL SUCCESSFUL")
