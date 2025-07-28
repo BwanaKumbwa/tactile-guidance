@@ -85,7 +85,7 @@ if __name__ == '__main__':
             break
 
     # Select source
-    select_source_manually = True
+    select_source_manually = False
     if select_source_manually:
         try:
             source = input(f'Available sources: {available_sources}. Please select the camera source: ')
@@ -100,7 +100,8 @@ if __name__ == '__main__':
     belt_controller = None
 
     # Experiment controls
-    target_objs = ['bottle', 'clock', 'potted plant', 'bowl', 'cup'] * 2 if condition == 'grasping' else ['bottle'] * 10
+    #target_objs = ['bottle', 'clock', 'potted plant', 'bowl', 'cup'] * 2 if condition == 'grasping' else ['bottle'] * 10
+    target_objs = ['bottle'] * 30
     output_path = 'results/' + f'{condition}/'
 
     if not os.path.exists(output_path):
@@ -135,7 +136,7 @@ if __name__ == '__main__':
             sys.exit()
 
     try:
-        bracelet_controller = BraceletController(vibration_intensities=participant_vibration_intensities)
+        bracelet_controller = BraceletController(vibration_intensities=participant_vibration_intensities, navigation_type = 1)
         task_controller = controller.TaskController(
                         weights_obj=weights_obj,  # model_obj path or triton URL
                         weights_hand=weights_hand,  # model_obj path or triton URL
@@ -169,7 +170,7 @@ if __name__ == '__main__':
                         half=False,  # use FP16 half-precision inference
                         dnn=False,  # use OpenCV DNN for ONNX inference
                         vid_stride=1,  # video frame-rate stride_obj
-                        manual_entry=True, # True means you will control the exp manually versus the standard automatic running
+                        manual_entry=False, # True means you will control the exp manually versus the standard automatic running
                         run_object_tracker=run_object_tracker,
                         run_depth_estimator=run_depth_estimator,
                         mock_navigate=mock_navigate,

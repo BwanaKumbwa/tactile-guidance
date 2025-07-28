@@ -64,7 +64,7 @@ def calibrate_intensity(direction):
 
 if __name__ == '__main__':
 
-    participant = 4
+    participant = 33 
     output_path = str(parent_dir) + '/results/calibration/'
 
     if not os.path.exists(output_path):
@@ -78,7 +78,7 @@ if __name__ == '__main__':
         print('Error connecting bracelet. Aborting.')
         sys.exit()
 
-    directions = ["bottom", "top", "left", "right"]
+    directions = ["bottom", "top", "left", "right"] # top motor - number 2, right motor - number 1
     output = {}
 
     try:

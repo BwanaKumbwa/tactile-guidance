@@ -69,6 +69,8 @@ class BraceletController:
         self.prev_top_intensity = 0
         self.prev_bot_intensity = 0
         self.mock_navigate = False
+        self.hand_position = []
+        self.hand_confidence_list = []
 
 
     def choose_detection(self, bboxes, previous_bbox=None, hand=False, w=1920, h=1080):
@@ -372,12 +374,20 @@ class BraceletController:
                 self.target_class_list = []
                 self.target_object_track_ids.append(int(target[4]))
                 self.target_position.append([target[0], target[1]])
+                
             else:
                 self.target_detections_list.append(0)
                 self.target_confidence_list.append(0)
                 self.target_class_track_ids.append([])
                 self.target_object_track_ids.append('NA')
                 self.target_position.append([0, 0])
+
+            if hand is not None:
+                self.hand_position.append([hand[0], hand[1]])
+                self.hand_confidence_list.append(hand[6])
+            else:
+                self.hand_position.append([0, 0])
+                self.hand_confidence_list.append('NA')
 
         if hand is not None and target is not None:
 
@@ -392,6 +402,8 @@ class BraceletController:
                 self.target_class_list = []
                 self.target_object_track_ids.append(int(target[4]))
                 self.target_position.append([target[0], target[1]])
+                self.hand_position.append([hand[0], hand[1]])
+                self.hand_confidence_list.append(hand[6])
 
 
             # Get varying vibration intensities depending on angle from hand to target
