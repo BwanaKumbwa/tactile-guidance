@@ -175,6 +175,12 @@ class TaskController(AutoAssign):
         self.bracelet_controller.target_object_track_ids = []
         self.bracelet_controller.target_position = []
 
+        output_data_row.append(self.bracelet_controller.hand_confidence_list) # list of hand detection confidence across the trial
+        output_data_row.append(self.bracelet_controller.hand_position) # information about hand center position
+
+        self.bracelet_controller.hand_confidence_list = []
+        self.bracelet_controller.hand_position = []
+
         self.output_data.append(output_data_row)
 
     

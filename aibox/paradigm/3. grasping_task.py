@@ -18,7 +18,7 @@ from bracelet import connect_belt, BraceletController
 if __name__ == '__main__':
     
     # Parameters
-    participant = '1'
+    participant = '-1'
     condition = 'grasping'
     metric = True
     mock_navigate = False
@@ -36,8 +36,9 @@ if __name__ == '__main__':
     belt_controller = None
 
     # Experiment controls
-    target_objs = ['bottle', 'bicycle', 'potted plant', 'bowl', 'cup'] * 2 if condition == 'grasping' else ['bottle'] * 5
-    output_path = 'results/' + f'{condition}/'
+    #target_objs = ['bottle', 'bicycle', 'potted plant', 'bowl', 'cup'] * 2 if condition == 'grasping' else ['bottle'] * 5
+    target_objs = ['bottle'] * 30
+    output_path = 'results/' + f'y{condition}/'
 
     if not os.path.exists(output_path):
         os.makedirs(output_path)
