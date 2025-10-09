@@ -156,3 +156,6 @@ aibox/resources/old_code/
 aibox/experiment/forms/
 aibox/results/
 aibox/weights/
+
+# .env files for environment variables
+*.env
