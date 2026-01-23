@@ -12,12 +12,12 @@ The auditory_interface provides a functionality to interact with HANS (Automated
 
 # Folder Structure
 
-auditory_interface/
-├── audio_engine.py
-├── main.py
-├── mcp_config.py
-├── query_processing.py
-├── server_hans.py
+auditory_interface/\
+├── audio_engine.py\
+├── main.py\
+├── mcp_config.py\
+├── query_processing.py\
+├── server_hans.py\
 └── resources/...
 
 # Brief File Descriptions
