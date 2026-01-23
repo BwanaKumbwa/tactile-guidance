@@ -6,6 +6,9 @@ This script is using code from the following sources:
 - https://github.com/zenjieli/Yolov5StrongSORT/blob/master/track.py, original: https://github.com/mikel-brostrom/yolo_tracking/commit/9fec03ddba453959f03ab59bffc36669ae2e932a
 """
 
+import queue
+import sys
+
 import sys
 from pathlib import Path
 import os
@@ -42,9 +45,9 @@ from ultralytics import YOLO
 from ultralytics.nn.autobackend import AutoBackend
 
 # Depth Estimation
-from unidepth_estimator import UniDepthEstimator # metric
-from midas_estimator import MidasDepthEstimator # relative
-from midas.run import create_side_by_side
+#from unidepth_estimator import UniDepthEstimator # metric
+#from midas_estimator import MidasDepthEstimator # relative
+#from midas.run import create_side_by_side
 
 
 def beginning_sound():
@@ -127,9 +130,10 @@ def close_app(controller):
 
 class AutoAssign:
 
-    def __init__(self, **kwargs):
+    def __init__(self, mcp_queue=None, **kwargs):
         for key, value in kwargs.items():
             setattr(self, key, value)
+            self.mcp_queue = mcp_queue
 
 
 class TaskController(AutoAssign):
@@ -422,6 +426,51 @@ class TaskController(AutoAssign):
         # Data processing: Iterate over each frame of the live stream
         for frame, (path, im, im0s, vid_cap, _) in enumerate(self.dataset):
 
+            # MCP queue listener
+            if hasattr(self, 'mcp_queue') and self.mcp_queue:
+                try:
+                    # Non-blocking check for new commands
+                    cmd_data = self.mcp_queue.get_nowait()
+                    
+                    # Print to stderr to see it in console without breaking MCP
+                    print(f"\n[System] RECEIVED COMMAND: {cmd_data}", file=sys.stderr, flush=True)
+
+                    # Append to a log file
+                    with open("controller_mcp_debug_log.txt", "a") as f:
+                        f.write(f"RECEIVED: {cmd_data}\n")
+
+                    instruction = cmd_data.get("instruction")
+                    value = cmd_data.get("value")
+
+                    # 1. Stop system
+                    if instruction == "stop":
+                        print("[System] Stopping via Voice...", file=sys.stderr)
+                        break 
+                    
+                    # 2. Change target object
+                    elif instruction == "set_target":
+                        # Validate the value
+                        if value in coco_labels.values():
+                            # Find ID for name
+                            new_id = next(k for k, v in coco_labels.items() if v == value)
+                            self.class_target_obj = new_id
+                            
+                            # Update system state to look for new target
+                            self.classes_obj = [self.class_target_obj]
+                            self.target_entered = True 
+                            print(f"[System] Switched target to: {value} (ID: {new_id})", file=sys.stderr)
+                            
+                            # Optional: Play sound
+                            # file = f'resources/sound/{value}.mp3'
+                            # playsound(str(file))
+                        else:
+                            print(f"[System] Error: '{value}' is not a valid COCO label.", file=sys.stderr)
+
+                except queue.Empty:
+                    pass
+                except Exception as e:
+                    print(f"[System] Error processing command: {e}", file=sys.stderr)
+
             # Start timer for FPS measure
             start = time.perf_counter()
             # Setup saving and visualization
@@ -618,7 +667,7 @@ class TaskController(AutoAssign):
 
             # Display results using open-cv
             if self.view_img:
-                cv2.putText(im0, f'FPS: {int(fps)}, Avg: {int(np.mean(fpss))}', (20,70), annotator.cv_font, 1.0, (0,255,0), 1)
+                cv2.putText(im0, f'FPS: {int(fps)}, Avg: {int(np.mean(fpss))}', (20,70), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0,255,0), 1)
 
                 if self.run_depth_estimator:
                     # Draw corners and new target point on im0

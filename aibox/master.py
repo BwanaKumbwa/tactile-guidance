@@ -19,44 +19,10 @@ import torch
 import cv2
 from bracelet import connect_belt, BraceletController
 
+def run_experiment_logic(args, mcp_queue=None):
+    participant = args.participant
+    condition = args.condition
 
-if __name__ == '__main__':
-
-    # Parse arguments from CLI
-    parser = argparse.ArgumentParser(description="Argument parser for bracelet tasks.")
-
-    # Add arguments
-    parser.add_argument(
-        "-p", "--participant", 
-        type=int, 
-        required=True, 
-        help="Participant number (randomize manually before)."
-    )
-    parser.add_argument(
-        "-c", "--condition", 
-        type=str, 
-        required=True,
-        choices=['grasping', 'multiple_objects', 'depth_navigation'],
-        help="The task to be performed by the participant."
-    )
-    parser.add_argument(
-        "--relative", 
-        action="store_true",
-        help="Whether metric or relative depth estimation should be used. Default: metric."
-    )
-    parser.add_argument(
-        "--mock_navigate",
-        action="store_true",
-        help="Whether to use mock navigation without a bracelet (for debugging)."
-    )
-    parser.add_argument(
-        "--save_video", 
-        action="store_true",
-        help="Whether to save the output video."
-    )
-    
-    # Parse the arguments
-    args = parser.parse_args()
     participant = args.participant
     condition = args.condition
     metric = (not args.relative) and torch.cuda.is_available()
@@ -95,13 +61,18 @@ if __name__ == '__main__':
             print(f'Invalid source. Defaulting to first available source ({available_sources[0]}).')
             source = available_sources[0]
     else:
-        source = available_sources[0]
+        #source = available_sources[0]
+        try:
+            source = available_sources[1]
+        except:
+            source = available_sources[0]
 
     belt_controller = None
 
     # Experiment controls
     #target_objs = ['bottle', 'clock', 'potted plant', 'bowl', 'cup'] * 2 if condition == 'grasping' else ['bottle'] * 10
-    target_objs = ['bottle'] * 30
+    #target_objs = ['bottle'] * 30
+    target_objs = []
     output_path = 'results/' + f'{condition}/'
 
     if not os.path.exists(output_path):
@@ -138,6 +109,7 @@ if __name__ == '__main__':
     try:
         bracelet_controller = BraceletController(vibration_intensities=participant_vibration_intensities, navigation_type = 1)
         task_controller = controller.TaskController(
+                        mcp_queue=mcp_queue,
                         weights_obj=weights_obj,  # model_obj path or triton URL
                         weights_hand=weights_hand,  # model_obj path or triton URL
                         weights_tracker=weights_tracker,
@@ -193,3 +165,44 @@ if __name__ == '__main__':
 
     # In the end, close all processes
     controller.close_app(belt_controller)
+
+if __name__ == '__main__':
+
+    # Parse arguments from CLI
+    parser = argparse.ArgumentParser(description="Argument parser for bracelet tasks.")
+
+    # Add arguments
+    parser.add_argument(
+        "-p", "--participant", 
+        type=int, 
+        required=True, 
+        help="Participant number (randomize manually before)."
+    )
+    parser.add_argument(
+        "-c", "--condition", 
+        type=str, 
+        required=True,
+        choices=['grasping', 'multiple_objects', 'depth_navigation'],
+        help="The task to be performed by the participant."
+    )
+    parser.add_argument(
+        "--relative", 
+        action="store_true",
+        help="Whether metric or relative depth estimation should be used. Default: metric."
+    )
+    parser.add_argument(
+        "--mock_navigate",
+        action="store_true",
+        help="Whether to use mock navigation without a bracelet (for debugging)."
+    )
+    parser.add_argument(
+        "--save_video", 
+        action="store_true",
+        help="Whether to save the output video."
+    )
+    
+    # Parse the arguments
+    args = parser.parse_args()
+    
+    # Run normally with no queue
+    run_experiment_logic(args, mcp_queue=None)
