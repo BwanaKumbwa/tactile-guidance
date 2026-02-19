@@ -2,7 +2,6 @@ import sys
 import os
 from pathlib import Path
 
-# Use the project file packages instead of the conda packages, i.e. add to system path for import
 file = Path(__file__).resolve()
 root = file.parents[0]
 os.chdir(root)
@@ -20,61 +19,27 @@ import cv2
 from bracelet import connect_belt, BraceletController
 
 
-if __name__ == '__main__':
+def run_experiment_logic(args, mcp_queue=None, shared_state=None):
+    participant = args.participant
+    condition = args.condition
 
-    # Parse arguments from CLI
-    parser = argparse.ArgumentParser(description="Argument parser for bracelet tasks.")
-
-    # Add arguments
-    parser.add_argument(
-        "-p", "--participant", 
-        type=int, 
-        required=True, 
-        help="Participant number (randomize manually before)."
-    )
-    parser.add_argument(
-        "-c", "--condition", 
-        type=str, 
-        required=True,
-        choices=['grasping', 'multiple_objects', 'depth_navigation'],
-        help="The task to be performed by the participant."
-    )
-    parser.add_argument(
-        "--relative", 
-        action="store_true",
-        help="Whether metric or relative depth estimation should be used. Default: metric."
-    )
-    parser.add_argument(
-        "--mock_navigate",
-        action="store_true",
-        help="Whether to use mock navigation without a bracelet (for debugging)."
-    )
-    parser.add_argument(
-        "--save_video", 
-        action="store_true",
-        help="Whether to save the output video."
-    )
-    
-    # Parse the arguments
-    args = parser.parse_args()
     participant = args.participant
     condition = args.condition
     metric = (not args.relative) and torch.cuda.is_available()
     mock_navigate = args.mock_navigate
     save_video = args.save_video
-    
-    # Parameters
-    weights_obj = 'weights/yolov5s.pt'  # Object model weights path
-    #weights_hand = 'weights/hand_v5_flosener.pt'
-    weights_hand = 'weights/hand_v5_optivist.pt' # Hands model weights path
+
+    weights_obj = 'weights/yolov5s.pt'
+    weights_hand = 'weights/hand_v5_optivist.pt'
 
     run_object_tracker = True if condition == 'multiple_objects' else False
-    weights_tracker = 'weights/osnet_x0_25_market1501.pt' # ReID weights path
+    weights_tracker = 'weights/osnet_x0_25_market1501.pt'
 
     run_depth_estimator = True if condition == 'depth_navigation' else False
-    weights_depth_estimator = 'v2-vits14' if metric else 'midas_v21_384' # v2-vits14 (UniDepth only supports cuda), v1-cnvnxtl; midas_v21_384 (MiDaS/ZoeDepth also supports cpu), dpt_levit_224
+    weights_depth_estimator = (
+        'v2-vits14' if metric else 'midas_v21_384'
+    )
 
-    # Check available camera sources
     available_sources = []
     for s in range(100):
         cap = cv2.VideoCapture(s)
@@ -84,49 +49,65 @@ if __name__ == '__main__':
         else:
             break
 
-    # Select source
     select_source_manually = False
     if select_source_manually:
         try:
-            source = input(f'Available sources: {available_sources}. Please select the camera source: ')
+            source = input(
+                f'Available sources: {available_sources}. '
+                'Please select the camera source: '
+            )
             if source not in available_sources:
                 raise ValueError
         except ValueError:
-            print(f'Invalid source. Defaulting to first available source ({available_sources[0]}).')
+            print(
+                f'Invalid source. Defaulting to first available '
+                f'source ({available_sources[0]}).'
+            )
             source = available_sources[0]
     else:
-        source = available_sources[0]
+        try:
+            source = available_sources[1]
+        except Exception:
+            source = available_sources[0]
 
     belt_controller = None
 
-    # Experiment controls
-    #target_objs = ['bottle', 'clock', 'potted plant', 'bowl', 'cup'] * 2 if condition == 'grasping' else ['bottle'] * 10
-    target_objs = ['bottle'] * 30
+    target_objs = []
     output_path = 'results/' + f'{condition}/'
 
     if not os.path.exists(output_path):
         os.makedirs(output_path)
 
     try:
-        with open('results/calibration/' + f"calibration_participant_{participant}.json") as file:
+        with open(
+            'results/calibration/'
+            f'calibration_participant_{participant}.json'
+        ) as file:
             participant_vibration_intensities = json.load(file)
         print('Calibration intensities loaded succesfully.')
-    except:
+    except Exception:
         baseline_value = 30
-        print(f'\nError while loading the calibration file. Continuing with baseline intensity of {baseline_value} for each vibromotor.')
-        participant_vibration_intensities = {'bottom': baseline_value, 'top': baseline_value, 'left': baseline_value, 'right': baseline_value,}
+        print(
+            f'\nError while loading the calibration file. '
+            f'Continuing with baseline intensity of {baseline_value} '
+            'for each vibromotor.'
+        )
+        participant_vibration_intensities = {
+            'bottom': baseline_value,
+            'top': baseline_value,
+            'left': baseline_value,
+            'right': baseline_value,
+        }
 
     print(f'\nLOADING CAMERA AND BRACELET')
 
-    # Check camera connection
     try:
         source = str(source)
         print('Camera connection successful')
-    except:
+    except Exception:
         print('Cannot access selected source. Aborting.')
         sys.exit()
 
-    # Check bracelet connection
     if not mock_navigate:
         connection_check, belt_controller = connect_belt()
         if connection_check:
@@ -136,60 +117,79 @@ if __name__ == '__main__':
             sys.exit()
 
     try:
-        bracelet_controller = BraceletController(vibration_intensities=participant_vibration_intensities, navigation_type = 1)
+        bracelet_controller = BraceletController(
+            vibration_intensities=participant_vibration_intensities,
+            navigation_type=1,
+        )
         task_controller = controller.TaskController(
-                        weights_obj=weights_obj,  # model_obj path or triton URL
-                        weights_hand=weights_hand,  # model_obj path or triton URL
-                        weights_tracker=weights_tracker,
-                        weights_depth_estimator=weights_depth_estimator,
-                        #source='images/',  # file/dir/URL/glob/screen/0(webcam)
-                        source=source,
-                        iou_thres=0.45,  # NMS IOU threshold
-                        max_det=1000,  # maximum detections per image
-                        device='',  # cuda device, i.e. 0 or 0,1,2,3 or cpu
-                        view_img=True,  # show results
-                        save_txt=False,  # save results to *.txtm)
-                        imgsz=(640, 640),  # inference size (height, width)
-                        conf_thres=0.7,  # confidence threshold
-                        save_conf=False,  # save confidences in --save-txt labels
-                        save_crop=False,  # save cropped prediction boxes
-                        nosave= not save_video,  # do not save images/videos
-                        classes_obj=[1,39,40,41,42,45,46,47,58,74],  # filter by class /  check coco.yaml file or coco_labels variable in this script
-                        classes_hand=[0,1], 
-                        #class_hand_nav=[80,81],
-                        agnostic_nms=False,  # class-agnostic NMS
-                        augment=False,  # augmented inference
-                        visualize=False,  # visualize features
-                        update=False,  # update all models
-                        project=output_path,  # save results to project/name
-                        name='video/',  # save results to project/name
-                        exist_ok=False,  # existing project/name ok, do not increment
-                        line_thickness=2,  # bounding box thickness (pixels)
-                        hide_labels=False,  # hide labels
-                        hide_conf=False,  # hide confidences
-                        half=False,  # use FP16 half-precision inference
-                        dnn=False,  # use OpenCV DNN for ONNX inference
-                        vid_stride=1,  # video frame-rate stride_obj
-                        manual_entry=False, # True means you will control the exp manually versus the standard automatic running
-                        run_object_tracker=run_object_tracker,
-                        run_depth_estimator=run_depth_estimator,
-                        mock_navigate=mock_navigate,
-                        belt_controller=belt_controller,
-                        tracker_max_age=60,
-                        tracker_n_init=5,
-                        target_objs=target_objs,
-                        output_data=[],
-                        output_path=output_path,
-                        condition=condition,
-                        participant=participant,
-                        participant_vibration_intensities=participant_vibration_intensities,
-                        bracelet_controller=bracelet_controller,
-                        metric=metric)
-        
+            mcp_queue=mcp_queue,
+            shared_state=shared_state,
+            weights_obj=weights_obj,
+            weights_hand=weights_hand,
+            weights_tracker=weights_tracker,
+            weights_depth_estimator=weights_depth_estimator,
+            source=source,
+            iou_thres=0.45,
+            max_det=1000,
+            device='',
+            view_img=True,
+            save_txt=False,
+            imgsz=(640, 640),
+            conf_thres=0.7,
+            save_conf=False,
+            save_crop=False,
+            nosave=not save_video,
+            classes_obj=[1, 39, 40, 41, 42, 45, 46, 47, 58, 74],
+            classes_hand=[0, 1],
+            agnostic_nms=False,
+            augment=False,
+            visualize=False,
+            update=False,
+            project=output_path,
+            name='video/',
+            exist_ok=False,
+            line_thickness=2,
+            hide_labels=False,
+            hide_conf=False,
+            half=False,
+            dnn=False,
+            vid_stride=1,
+            manual_entry=False,
+            run_object_tracker=run_object_tracker,
+            run_depth_estimator=run_depth_estimator,
+            mock_navigate=mock_navigate,
+            belt_controller=belt_controller,
+            tracker_max_age=60,
+            tracker_n_init=5,
+            target_objs=target_objs,
+            output_data=[],
+            output_path=output_path,
+            condition=condition,
+            participant=participant,
+            participant_vibration_intensities=participant_vibration_intensities,
+            bracelet_controller=bracelet_controller,
+            metric=metric,
+        )
+
         task_controller.run()
 
     except KeyboardInterrupt:
         controller.close_app(belt_controller)
 
-    # In the end, close all processes
     controller.close_app(belt_controller)
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        description="Argument parser for bracelet tasks."
+    )
+    parser.add_argument("-p", "--participant", type=int, required=True)
+    parser.add_argument("-c", "--condition", type=str, required=True,
+                        choices=['grasping', 'multiple_objects', 'depth_navigation'])
+    parser.add_argument("--relative", action="store_true")
+    parser.add_argument("--mock_navigate", action="store_true")
+    parser.add_argument("--save_video", action="store_true")
+
+    args = parser.parse_args()
+    run_experiment_logic(args, mcp_queue=None, shared_state=None)

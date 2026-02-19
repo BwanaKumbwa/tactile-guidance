@@ -159,3 +159,6 @@ aibox/weights/
 
 # .env files for environment variables
 *.env
+
+# log files
+*log*
