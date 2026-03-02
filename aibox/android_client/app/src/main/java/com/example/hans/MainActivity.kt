@@ -128,6 +128,27 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                 restartListening()
             }
         }
+
+        // Set the background to black so the "stripes" blend in natively
+        rootLayout.setBackgroundColor(android.graphics.Color.BLACK)
+
+        surfaceView.post {
+            val screenWidth = surfaceView.width
+
+            // The raw ARCore CPU image sent to the PC is usually a 3:4 portrait ratio (e.g., 480x640).
+            // If your PC stream looks slightly squished with 3:4, change the 4 and 3 to 16 and 9 (for 9:16).
+            val targetHeight = (screenWidth * 16) / 9
+
+            // 1. Resize the Camera View to force letterboxing (black bars)
+            val surfaceParams = surfaceView.layoutParams
+            surfaceParams.height = targetHeight
+            surfaceView.layoutParams = surfaceParams
+
+            // 2. Resize the Overlay View so the AI boxes perfectly match the new camera dimensions
+            val overlayParams = overlayView.layoutParams
+            overlayParams.height = targetHeight
+            overlayView.layoutParams = overlayParams
+        }
     }
 
     private fun initSystem() {

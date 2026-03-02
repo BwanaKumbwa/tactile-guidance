@@ -100,10 +100,10 @@ class CameraRenderer {
             frame.transformCoordinates2d(
                 Coordinates2d.OPENGL_NORMALIZED_DEVICE_COORDINATES,
                 floatArrayOf(
-                    0.0f, 0.0f,
-                    0.0f, 1.0f,
-                    1.0f, 0.0f,
-                    1.0f, 1.0f
+                    -1.0f, -1.0f,
+                    -1.0f,  1.0f,
+                    1.0f, -1.0f,
+                    1.0f,  1.0f
                 ),
                 Coordinates2d.TEXTURE_NORMALIZED,
                 transformedUvs
