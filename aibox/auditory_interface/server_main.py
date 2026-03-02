@@ -75,7 +75,7 @@ openai_tools_global = []
 class SimArgs:
     def __init__(self):
         self.participant = 1
-        self.condition = 'multiple_objects'
+        self.condition = 'multiple_objects' # grasping, multiple_objects, depth_navigation
         self.relative = False
         self.mock_navigate = False 
         self.save_video = False
@@ -141,24 +141,30 @@ class InternalCommand(BaseModel):
 
 @app.post("/internal/command")
 def receive_internal_command(cmd: InternalCommand):
-    """server_hans.py calls this to trigger YOLO changes"""
-    mcp_queue.put({"instruction": cmd.instruction, "value": cmd.value})
     
-    if cmd.instruction == "set_target":
-        shared_state.set_target(cmd.value)
-        
-    elif cmd.instruction == "stop":
-        # We start a background timer to kill the server in 3 seconds.
-        # This gives the server enough time to send the final "[SHUTDOWN]" 
-        # HTTP response back to the phone before it dies.
+    if cmd.instruction == "shutdown":
+        # 1. Tell YOLO to break its loop and close resources
+        mcp_queue.put({"instruction": "stop", "value": ""})
+        # 2. Start the suicide timer for the Web Server
         def shutdown_server():
+            import time, os, signal
             time.sleep(3)
             print("🛑 Shutting down FastAPI server...")
-            # This sends the Ctrl+C signal to the server, stopping it gracefully
             os.kill(os.getpid(), signal.SIGINT)
-            
         threading.Thread(target=shutdown_server, daemon=True).start()
         
+    elif cmd.instruction == "disconnect":
+        # Don't kill the server! Just tell YOLO to clear its target.
+        # This effectively puts the AI into "Sleep Mode" waiting for the next connection.
+        mcp_queue.put({"instruction": "set_target", "value": "none"})
+        shared_state.set_target("none")
+        
+    else:
+        # Standard commands (set_target, pause, etc)
+        mcp_queue.put({"instruction": cmd.instruction, "value": cmd.value})
+        if cmd.instruction == "set_target":
+            shared_state.set_target(cmd.value)
+            
     return {"status": "ok"}
 
 @app.get("/internal/state")
@@ -231,7 +237,6 @@ async def video_endpoint(websocket: WebSocket):
             data = await websocket.receive_bytes() 
             np_arr = np.frombuffer(data, np.uint8)
             frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-            
             if frame is not None:
                 frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
                 latest_frame_ref["img"] = frame.copy()
@@ -239,7 +244,8 @@ async def video_endpoint(websocket: WebSocket):
                 if frame_queue.full():
                     try: frame_queue.get_nowait()
                     except queue.Empty: pass
-                frame_queue.put(frame)
+                    
+                frame_queue.put(frame) 
                 
     except WebSocketDisconnect:
         print("❌ Phone Disconnected")

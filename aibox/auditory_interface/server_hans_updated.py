@@ -15,17 +15,23 @@ FASTAPI_URL = "http://localhost:8000/internal"
 @mcp.tool()
 def control_vision(instruction: str, value: str = "") -> str:
     """
-    Controls the vision system. Instructions: 'stop', 'set_target'.
+    Controls the vision system targets and power state.
+    Instructions: 'set_target', 'disconnect', 'shutdown'.
     
-    CRITICAL: If the user explicitly asks to stop, quit, or shut down the system, 
-    you must call this tool with instruction='stop'. 
-    AFTER calling 'stop', you MUST include the exact text [SHUTDOWN] 
-    at the very beginning of your final reply to the user.
+    CRITICAL RULES:
+    1. If the user wants to leave, disconnect, or stop for now: instruction='disconnect'. 
+       You MUST start your final reply to the user with [DISCONNECT].
+    2. If the user explicitly wants to turn off the PC server completely: instruction='shutdown'. 
+       You MUST start your final reply to the user with [SHUTDOWN].
     """
     try:
         requests.post(f"{FASTAPI_URL}/command", json={"instruction": instruction, "value": value})
-        if instruction == "stop":
-            return "System stopping. You MUST start your reply with [SHUTDOWN]."
+        
+        if instruction == "disconnect":
+            return "Disconnecting. You MUST start your reply with [DISCONNECT]."
+        elif instruction == "shutdown":
+            return "Shutting down. You MUST start your reply with [SHUTDOWN]."
+            
         return f"Success: {instruction} -> {value}"
     except Exception as e:
         return f"Failed: {e}"

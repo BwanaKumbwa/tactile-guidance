@@ -13,9 +13,49 @@ class HANSBrain:
             raise ValueError("OPENAI_API_KEY environment variable is not set.")
         
         self.client = AsyncOpenAI()
-        self.messages = [
-            {"role": "system", "content": "You are a helpful assistant. If a tool requires data from another tool, execute them in steps."}
-        ]
+
+        self.verbosity = "concise" # Can be 'concise', 'normal', 'verbose'
+        
+        self.update_system_prompt()
+
+        #self.messages = [
+        #    {"role": "system", "content": "You are a helpful assistant. If a tool requires data from another tool, execute them in steps."}
+        #]
+
+    def update_system_prompt(self):
+        verbosity_rules = {
+            "concise": "Keep answers to 1 short sentence. No pleasantries. Just the facts.",
+            "normal": "Answer naturally, like a helpful assistant, in 1-2 sentences.",
+            "verbose": "Explain what you are doing, what you see, and be very descriptive."
+        }
+        
+        system_content = f"""You are HANS, a wearable AI assistant for a visually impaired user. 
+You control a camera, a vibrating navigation belt, and speech settings.
+
+CURRENT SETTINGS:
+- Verbosity: {verbosity_rules.get(self.verbosity, "normal")}
+
+CRITICAL RULES:
+1. ALWAYS obey the current Verbosity setting.
+2. HAND DETECTION: The object classes 'myright' and 'myleft' refer specifically to the USER'S HANDS.
+3. TOOLS: 
+   - To talk faster/slower, use `set_speech_speed`. 
+   - To be more/less descriptive, use `set_verbosity`.
+   - To check if bluetooth is connected, use `get_hardware_status`.
+   - NEVER call `control_vision(instruction='stop')` unless the user explicitly says the word "Stop" or "Quit".
+"""
+        if not hasattr(self, 'messages') or len(self.messages) == 0:
+            self.messages = [{"role": "system", "content": system_content}]
+        else:
+            self.messages[0] = {"role": "system", "content": system_content}
+            
+    def set_verbosity(self, level: str) -> str:
+        """Called by an MCP tool to change chat length."""
+        if level in ["concise", "normal", "verbose"]:
+            self.verbosity = level
+            self.update_system_prompt()
+            return f"I will now be {level}."
+        return f"Unknown verbosity level: {level}."
 
     async def process_query(self, session: ClientSession, user_text: str, openai_tools: list, model_type: str = "gpt-4o") -> str:
         """
