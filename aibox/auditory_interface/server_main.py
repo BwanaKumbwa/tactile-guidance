@@ -1,0 +1,210 @@
+import asyncio
+import cv2
+import numpy as np
+import base64
+import threading
+import queue
+import json
+import sys
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+file = Path(__file__).resolve()
+root = file.parents[0] 
+for path in ['/yolov5', '/strongsort', '/unidepth', '/midas']:
+    if str(root) + path not in sys.path:
+        sys.path.append(str(root) + path)
+
+from android_loader import AndroidSource
+from virtual_belt import VirtualBeltController
+import master 
+from query_processing import HANSBrain
+from mcp.client.stdio import stdio_client
+from mcp import ClientSession
+from mcp_config import get_server_parameters, convert_mcp_to_openai_tools
+
+# Shared state
+class SharedState:
+    """Thread-safe container updated by YOLO, read by MCP."""
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._current_target = "none"
+        self._visible_objects = []
+        self._available_classes = []
+
+    def set_target(self, target: str):
+        with self._lock: self._current_target = target
+    def get_target(self):
+        with self._lock: return self._current_target
+    def set_visible_objects(self, objects: list):
+        with self._lock: self._visible_objects = list(objects)
+    def get_visible_objects(self):
+        with self._lock: return list(self._visible_objects)
+    def set_available_classes(self, classes: list):
+        with self._lock: self._available_classes = list(classes)
+    def get_available_classes(self):
+        with self._lock: return list(self._available_classes)
+
+shared_state = SharedState()
+
+# Global queues and state
+result_queue = queue.Queue(maxsize=10)
+frame_queue = queue.Queue(maxsize=1)
+mcp_queue = queue.Queue()
+latest_frame_ref = {"img": None}
+
+brain = HANSBrain()
+mcp_session_global = None
+openai_tools_global = []
+
+# Configuration
+class SimArgs:
+    def __init__(self):
+        self.participant = 1
+        self.condition = 'multiple_objects'
+        self.relative = False
+        self.mock_navigate = False 
+        self.save_video = False
+
+def run_ai_logic():
+    print("🧠 AI Vision Thread Started")
+    android_loader = AndroidSource(frame_queue, img_size=640)
+    args = SimArgs()
+    virtual_belt = VirtualBeltController(result_queue)
+    
+    try:
+        master.run_experiment_logic(
+            args, 
+            mcp_queue=mcp_queue, 
+            shared_state=shared_state,
+            custom_loader=android_loader,
+            result_queue=result_queue,
+            custom_belt=virtual_belt 
+        )
+    except Exception as e:
+        print(f"❌ Error in AI Loop: {e}")
+
+# Lifecycle (MCP startup)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global mcp_session_global, openai_tools_global
+    
+    # 1. Start YOLO Thread
+    threading.Thread(target=run_ai_logic, daemon=True).start()
+    
+    # 2. Start MCP Robustly in background task (won't crash FastAPI if it fails)
+    async def init_mcp():
+        global mcp_session_global, openai_tools_global
+        try:
+            print("--- Starting MCP Server Process ---")
+            server_params = get_server_parameters("server_hans_updated.py")
+            async with stdio_client(server_params) as (read, write):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    mcp_tools = await session.list_tools()
+                    openai_tools_global = convert_mcp_to_openai_tools(mcp_tools)
+                    mcp_session_global = session
+                    print(f"✅ MCP Connected! Tools: {[t.name for t in mcp_tools.tools]}")
+                    
+                    await asyncio.Event().wait() # Keep connection open
+        except Exception as e:
+            print(f"❌ MCP Connection Failed: {e}")
+            print("⚠️ Server will run, but LLM Commands will be disabled.")
+
+            import traceback
+            traceback.print_exc()
+
+    mcp_task = asyncio.create_task(init_mcp())
+    yield
+    mcp_task.cancel()
+
+app = FastAPI(lifespan=lifespan)
+
+# Internal endpoints
+class InternalCommand(BaseModel):
+    instruction: str
+    value: str
+
+@app.post("/internal/command")
+def receive_internal_command(cmd: InternalCommand):
+    """server_hans.py calls this to trigger YOLO changes"""
+    mcp_queue.put({"instruction": cmd.instruction, "value": cmd.value})
+    if cmd.instruction == "set_target":
+        shared_state.set_target(cmd.value)
+    return {"status": "ok"}
+
+@app.get("/internal/state")
+def get_internal_state():
+    """server_hans.py calls this to read what YOLO sees"""
+    return {
+        "target": shared_state.get_target(),
+        "visible_objects": shared_state.get_visible_objects(),
+        "available_classes": shared_state.get_available_classes()
+    }
+
+# Android endpoints
+@app.websocket("/ws/video")
+async def video_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    print("✅ Phone Connected")
+    
+    async def sender_task():
+        try:
+            while True:
+                if not result_queue.empty():
+                    item = result_queue.get()
+                    await websocket.send_text(json.dumps(item))
+                await asyncio.sleep(0.01)
+        except Exception as e:
+            print(f"Sender task error: {e}")
+
+    sender_future = asyncio.create_task(sender_task())
+
+    try:
+        while True:
+            data = await websocket.receive_bytes() 
+            np_arr = np.frombuffer(data, np.uint8)
+            frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+            
+            if frame is not None:
+                frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+                latest_frame_ref["img"] = frame.copy()
+
+                if frame_queue.full():
+                    try: frame_queue.get_nowait()
+                    except queue.Empty: pass
+                frame_queue.put(frame)
+                
+    except WebSocketDisconnect:
+        print("❌ Phone Disconnected")
+    finally:
+        sender_future.cancel()
+
+class CommandRequest(BaseModel):
+    text: str
+
+@app.post("/api/command")
+async def process_command(req: CommandRequest):
+    print(f"\n🎤 User audio transcribed as: {req.text}")
+    
+    if mcp_session_global is None:
+        return {"answer": "The AI is currently booting up, please wait."}
+
+    try:
+        # LLM processing
+        answer = await brain.process_query(
+            mcp_session_global, 
+            req.text, 
+            openai_tools_global
+        )
+        return {"answer": answer}
+        
+    except Exception as e:
+        print(f"❌ LLM Processing Error: {e}")
+        return {"answer": "I encountered an error analyzing your request."}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
