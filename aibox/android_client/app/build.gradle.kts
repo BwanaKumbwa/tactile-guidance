@@ -62,4 +62,7 @@ dependencies {
 
     // --- JSON ---
     implementation("org.json:json:20210307")
+
+    // --- ARCore ---
+    implementation("com.google.ar:core:1.41.0")
 }
