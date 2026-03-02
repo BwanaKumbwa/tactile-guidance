@@ -151,12 +151,34 @@ async def video_endpoint(websocket: WebSocket):
     print("✅ Phone Connected")
     
     async def sender_task():
+        class NumpyEncoder(json.JSONEncoder):
+            def default(self, obj):
+                if isinstance(obj, np.integer):
+                    return int(obj)
+                if isinstance(obj, np.floating):
+                    return float(obj)
+                if isinstance(obj, np.ndarray):
+                    return obj.tolist()
+                return super(NumpyEncoder, self).default(obj)
+
         try:
             while True:
                 if not result_queue.empty():
                     item = result_queue.get()
-                    await websocket.send_text(json.dumps(item))
-                await asyncio.sleep(0.01)
+                    
+                    # 1. Protect against raw images
+                    # If an image frame somehow gets in the queue, skip it
+                    # (Sending a raw image as a JSON list crashes the phone)
+                    if isinstance(item, np.ndarray):
+                        continue 
+                    
+                    # 2. Serialize safely using the Custom Encoder
+                    json_str = json.dumps(item, cls=NumpyEncoder)
+                    
+                    # 3. Send to Android
+                    await websocket.send_text(json_str)
+                    
+                await asyncio.sleep(0.01) # Yield to event loop
         except Exception as e:
             print(f"Sender task error: {e}")
 

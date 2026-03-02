@@ -378,29 +378,43 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     }
 
     private fun restartListening() {
-        // Prevent overlapping calls
-        speechRecognizer.cancel()
+        // Force all SpeechRecognizer actions onto the Main UI Thread
+        runOnUiThread {
+            try {
+                if (::speechRecognizer.isInitialized) {
+                    // Prevent overlapping calls
+                    speechRecognizer.cancel()
+                }
+            } catch (e: Exception) {
+                Log.e("HANS", "Error canceling recognizer", e)
+            }
 
-        // Add a tiny delay to prevent the UI thread from locking up
-        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-            startListeningMuted()
-        }, 100)
+            // Add a tiny delay to prevent the UI thread from locking up
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                startListeningMuted()
+            }, 100)
+        }
     }
 
     private fun startListeningMuted() {
-        if (!::speechRecognizer.isInitialized) return
+        runOnUiThread {
+            if (!::speechRecognizer.isInitialized) return@runOnUiThread
 
-        // 1. Mute the system "Bloop" sound
-        val currentVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-        audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_MUTE, 0)
+            try {
+                // 1. Mute the system "Bloop" sound
+                audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_MUTE, 0)
 
-        // 2. Start listening
-        speechRecognizer.startListening(speechIntent)
+                // 2. Start listening
+                speechRecognizer.startListening(speechIntent)
 
-        // 3. Unmute immediately after it starts
-        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-            audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_UNMUTE, 0)
-        }, 300)
+                // 3. Unmute immediately after it starts
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_UNMUTE, 0)
+                }, 300)
+            } catch (e: Exception) {
+                Log.e("HANS", "Error starting muted listener", e)
+            }
+        }
     }
 
     private fun toggleListening() {
