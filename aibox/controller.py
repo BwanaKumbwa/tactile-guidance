@@ -358,6 +358,8 @@ class TaskController(AutoAssign):
 
         grasped = False
 
+        vibration_timer = None
+
         # Data processing: Iterate over each frame of the live stream
         for frame, (path, im, im0s, vid_cap, _) in enumerate(self.dataset):
 
@@ -386,7 +388,21 @@ class TaskController(AutoAssign):
                             self.class_target_obj = new_id
                             
                             self.classes_obj = [self.class_target_obj]
-                            self.target_entered = True 
+                            self.target_entered = True
+
+                            # RESET ALL TRIAL AND VIBRATION FLAGS
+                            self.ready_for_next_trial = False 
+                            self.trial_start_time = time.time()
+                            self.frozen = False
+                            
+                            if hasattr(self, 'bracelet_controller') and self.bracelet_controller:
+                                self.bracelet_controller.vibrate = True
+                                self.bracelet_controller.frozen = False
+                                self.bracelet_controller.was_guiding = False
+                                self.bracelet_controller.searching = True
+                                self.bracelet_controller.prev_target = None
+                                self.bracelet_controller.prev_hand = None
+
                             print(f"[System] Switched target to: {value} (ID: {new_id})", file=sys.stderr)
 
                             self._publish_target(value)
@@ -592,6 +608,29 @@ class TaskController(AutoAssign):
                     annotator.box_label(xyxy, label, color=labelcolor)
             im0 = annotator.result()
 
+            if hasattr(self, 'result_queue') and self.result_queue is not None:
+                if not self.result_queue.full():
+                    # We send a copy to avoid threading race conditions
+                    self.result_queue.put(im0.copy())
+
+            # JSON OPTIMIZATION: Extract Boxes instead of Image
+            if hasattr(self, 'result_queue') and self.result_queue is not None:
+                if not self.result_queue.full():
+                    json_data = []
+                    img_h, img_w, _ = im0.shape
+                    
+                    for *xywh, obj_id, cls, conf, depth in outputs:
+                        x_c, y_c, w, h = xywh
+                        label_name = self.master_label[int(cls)]
+                        json_data.append({
+                            "x": float(x_c) / img_w,
+                            "y": float(y_c) / img_h,
+                            "w": float(w) / img_w,
+                            "h": float(h) / img_h,
+                            "label": label_name
+                        })
+                    self.result_queue.put(json_data) # Send List of boxes
+
             if self.view_img:
                 cv2.putText(im0, f'FPS: {int(fps)}, Avg: {int(np.mean(fpss))}', (20,70), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0,255,0), 1)
 
@@ -671,18 +710,22 @@ class TaskController(AutoAssign):
         self.bs = 1
         view_img = check_imshow(warn=True)
 
-        try:
-            if os.path.isdir(source) or os.path.isfile(source):
-                self.dataset = LoadImages(source, img_size=640)
-            else:
-                self.dataset = LoadStreams(source)
-        except AssertionError:
-            change_camera = input(f'Failed to open camera with index {source}. Do you want to continue with source 0 (most likely the webcam)? (y/n)')
-            if change_camera == 'y':
-                source = '0'
-                self.dataset = LoadStreams(source, img_size=640)
-            elif change_camera == 'n':
-                exit()
+        # If 'dataset' was already injected (by server_main), skip opening a new source
+        if hasattr(self, 'dataset') and self.dataset is not None:
+            print("Using injected Android Data Source")
+        else:
+            try:
+                if os.path.isdir(source) or os.path.isfile(source):
+                    self.dataset = LoadImages(source, img_size=480)
+                else:
+                    self.dataset = LoadStreams(source)
+            except AssertionError:
+                change_camera = input(f'Failed to open camera with index {source}. Do you want to continue with source 0? (y/n)')
+                if change_camera == 'y':
+                    source = '0'
+                    self.dataset = LoadStreams(source, img_size=480)
+                elif change_camera == 'n':
+                    exit()
 
         self.bs = len(self.dataset)
         vid_path, vid_writer = [None] * self.bs, [None] * self.bs

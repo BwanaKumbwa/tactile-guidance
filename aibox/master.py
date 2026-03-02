@@ -19,10 +19,8 @@ import cv2
 from bracelet import connect_belt, BraceletController
 
 
-def run_experiment_logic(args, mcp_queue=None, shared_state=None):
-    participant = args.participant
-    condition = args.condition
-
+# Update function signature
+def run_experiment_logic(args, mcp_queue=None, shared_state=None, custom_loader=None, result_queue=None, custom_belt=None):
     participant = args.participant
     condition = args.condition
     metric = (not args.relative) and torch.cuda.is_available()
@@ -31,91 +29,76 @@ def run_experiment_logic(args, mcp_queue=None, shared_state=None):
 
     weights_obj = 'weights/yolov5s.pt'
     weights_hand = 'weights/hand_v5_optivist.pt'
-
     run_object_tracker = True if condition == 'multiple_objects' else False
     weights_tracker = 'weights/osnet_x0_25_market1501.pt'
-
     run_depth_estimator = True if condition == 'depth_navigation' else False
-    weights_depth_estimator = (
-        'v2-vits14' if metric else 'midas_v21_384'
-    )
+    weights_depth_estimator = ('v2-vits14' if metric else 'midas_v21_384')
 
-    available_sources = []
-    for s in range(100):
-        cap = cv2.VideoCapture(s)
-        if cap.isOpened():
-            available_sources.append(str(s))
-            cap.release()
-        else:
-            break
-
-    select_source_manually = False
-    if select_source_manually:
-        try:
-            source = input(
-                f'Available sources: {available_sources}. '
-                'Please select the camera source: '
-            )
-            if source not in available_sources:
-                raise ValueError
-        except ValueError:
-            print(
-                f'Invalid source. Defaulting to first available '
-                f'source ({available_sources[0]}).'
-            )
-            source = available_sources[0]
+    # --- CAMERA SETUP ---
+    if custom_loader is not None:
+        print("Using Android Source - Skipping Camera Discovery")
+        source = '0' 
     else:
-        try:
-            source = available_sources[1]
-        except Exception:
-            source = available_sources[0]
+        available_sources = []
+        for s in range(100):
+            cap = cv2.VideoCapture(s)
+            if cap.isOpened():
+                available_sources.append(str(s))
+                cap.release()
+            else:
+                break
 
-    belt_controller = None
+        select_source_manually = False
+        if select_source_manually:
+            try:
+                source = input(
+                    f'Available sources: {available_sources}. '
+                    'Please select the camera source: '
+                )
+                if source not in available_sources:
+                    raise ValueError
+            except ValueError:
+                print(
+                    f'Invalid source. Defaulting to first available '
+                    f'source ({available_sources[0]}).'
+                )
+                source = available_sources[0]
+        else:
+            try:
+                source = available_sources[1]
+            except Exception:
+                source = available_sources[0]
 
     target_objs = []
     output_path = 'results/' + f'{condition}/'
-
     if not os.path.exists(output_path):
         os.makedirs(output_path)
 
+    # --- CALIBRATION ---
     try:
-        with open(
-            'results/calibration/'
-            f'calibration_participant_{participant}.json'
-        ) as file:
+        with open('results/calibration/' + f'calibration_participant_{participant}.json') as file:
             participant_vibration_intensities = json.load(file)
-        print('Calibration intensities loaded succesfully.')
     except Exception:
         baseline_value = 30
-        print(
-            f'\nError while loading the calibration file. '
-            f'Continuing with baseline intensity of {baseline_value} '
-            'for each vibromotor.'
-        )
         participant_vibration_intensities = {
-            'bottom': baseline_value,
-            'top': baseline_value,
-            'left': baseline_value,
-            'right': baseline_value,
+            'bottom': baseline_value, 'top': baseline_value,
+            'left': baseline_value, 'right': baseline_value,
         }
 
-    print(f'\nLOADING CAMERA AND BRACELET')
-
-    try:
-        source = str(source)
-        print('Camera connection successful')
-    except Exception:
-        print('Cannot access selected source. Aborting.')
-        sys.exit()
-
-    if not mock_navigate:
+    # --- BELT SETUP ---
+    belt_controller = None
+    if custom_belt is not None:
+        print('Using Networked Virtual Belt.')
+        belt_controller = custom_belt
+    elif not mock_navigate:
         connection_check, belt_controller = connect_belt()
         if connection_check:
-            print('Bracelet connection successful.')
+            print('Hardware Bracelet connection successful.')
         else:
-            print('Error connecting bracelet. Aborting.')
+            print('Error connecting hardware bracelet. Aborting.')
             sys.exit()
 
+    # --- RUN CONTROLLER ---
     try:
         bracelet_controller = BraceletController(
             vibration_intensities=participant_vibration_intensities,
@@ -171,12 +154,15 @@ def run_experiment_logic(args, mcp_queue=None, shared_state=None):
             metric=metric,
         )
 
+        if custom_loader is not None:
+            task_controller.dataset = custom_loader
+        if result_queue is not None:
+            task_controller.result_queue = result_queue
+
         task_controller.run()
 
     except KeyboardInterrupt:
         controller.close_app(belt_controller)
-
-    controller.close_app(belt_controller)
 
 
 if __name__ == '__main__':
@@ -192,4 +178,4 @@ if __name__ == '__main__':
     parser.add_argument("--save_video", action="store_true")
 
     args = parser.parse_args()
-    run_experiment_logic(args, mcp_queue=None, shared_state=None)
+    run_experiment_logic(args, mcp_queue=None, shared_state=None, custom_loader=None)

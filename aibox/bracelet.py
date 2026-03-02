@@ -71,6 +71,7 @@ class BraceletController:
         self.mock_navigate = False
         self.hand_position = []
         self.hand_confidence_list = []
+        self.last_vib_update_time = 0
 
 
     def choose_detection(self, bboxes, previous_bbox=None, hand=False, w=1920, h=1080):
@@ -528,64 +529,48 @@ class BraceletController:
         # 2. Guidance
         if hand is not None and target is not None:
             self.searching = True
-
             self.timer = 0
-
             self.was_guiding = True
-            self.prev_right_intensity = right_int
-            self.prev_left_intensity = left_int
-            self.prev_top_intensity = top_int
-            self.prev_bot_intensity = bot_int
+            
+            # Only send BLE packets if 200ms have passed (5 FPS)
+            current_time = time.time()
+            if current_time - self.last_vib_update_time > 0.2:
+                self.last_vib_update_time = current_time
+                
+                # Check if intensities changed enough to bother sending
+                if abs(right_int - self.prev_right_intensity) > 5 or \
+                   abs(left_int - self.prev_left_intensity) > 5 or \
+                   abs(top_int - self.prev_top_intensity) > 5 or \
+                   abs(bot_int - self.prev_bot_intensity) > 5:
 
-            if belt_controller and self.vibrate:
-                belt_controller.send_vibration_command(
-                    channel_index=0,
-                    pattern=BeltVibrationPattern.CONTINUOUS,
-                    intensity=right_int,
-                    orientation_type=BeltOrientationType.ANGLE,
-                    orientation=120,
-                    pattern_iterations=None,
-                    pattern_period=100,
-                    pattern_start_time=0,
-                    exclusive_channel=False,
-                    clear_other_channels=False
-                )
-                belt_controller.send_vibration_command(
-                    channel_index=1,
-                    pattern=BeltVibrationPattern.CONTINUOUS,
-                    intensity=left_int,
-                    orientation_type=BeltOrientationType.ANGLE,
-                    orientation=45,
-                    pattern_iterations=None,
-                    pattern_period=100,
-                    pattern_start_time=0,
-                    exclusive_channel=False,
-                    clear_other_channels=False
-                )
-                belt_controller.send_vibration_command(
-                    channel_index=2,
-                    pattern=BeltVibrationPattern.CONTINUOUS,
-                    intensity=top_int,
-                    orientation_type=BeltOrientationType.ANGLE,
-                    orientation=90,
-                    pattern_iterations=None,
-                    pattern_period=100,
-                    pattern_start_time=0,
-                    exclusive_channel=False,
-                    clear_other_channels=False
-                )
-                belt_controller.send_vibration_command(
-                    channel_index=3,
-                    pattern=BeltVibrationPattern.CONTINUOUS,
-                    intensity=bot_int,
-                    orientation_type=BeltOrientationType.ANGLE,
-                    orientation=60,
-                    pattern_iterations=None,
-                    pattern_period=100,
-                    pattern_start_time=0,
-                    exclusive_channel=False,
-                    clear_other_channels=False
-                )
+                    self.prev_right_intensity = right_int
+                    self.prev_left_intensity = left_int
+                    self.prev_top_intensity = top_int
+                    self.prev_bot_intensity = bot_int
+
+                    if belt_controller and self.vibrate:
+                        belt_controller.send_vibration_command(
+                            channel_index=0, pattern=1, intensity=right_int,
+                            orientation_type=2, orientation=120, pattern_iterations=None,
+                            pattern_period=100, pattern_start_time=0,
+                            exclusive_channel=False, clear_other_channels=False
+                        )
+                        belt_controller.send_vibration_command(
+                            channel_index=1, pattern=1, intensity=left_int,
+                            orientation_type=2, orientation=45, pattern_iterations=None,
+                            pattern_period=100, pattern_start_time=0,
+                            exclusive_channel=False, clear_other_channels=False)
+                        belt_controller.send_vibration_command(
+                            channel_index=0, pattern=1, intensity=top_int,
+                            orientation_type=2, orientation=90, pattern_iterations=None,
+                            pattern_period=100, pattern_start_time=0,
+                            exclusive_channel=False, clear_other_channels=False
+                        )
+                        belt_controller.send_vibration_command(
+                            channel_index=1, pattern=1, intensity=bot_int,
+                            orientation_type=2, orientation=60, pattern_iterations=None,
+                            pattern_period=100, pattern_start_time=0,
+                            exclusive_channel=False, clear_other_channels=False)
 
             if self.mock_navigate:
                 print(f'Normal Guidance; right: {right_int}, left: {left_int}, top: {top_int}, bot: {bot_int}')
