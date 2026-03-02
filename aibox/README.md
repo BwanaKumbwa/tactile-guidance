@@ -8,9 +8,10 @@ To use Android smartphone as a control device:
 1) Set up the Android Studio on your local machine (https://developer.android.com/studio)
 2) Open the android_client as a project in your Android Studio
 3) Open the repository with the whole project in you IDE (e.g., Visual Studio Code)
-4) Add .env file in the auditory_interface, put there OPENAI_API_KEY=your_API_key (Note: currently, the system by default connects to the OpenAI API to utilize ChatGPT as the backbone of the MCP server. If you want to use different provider, adapt scripts accordingly)
-5) Connect your smartphone to the Android Studio (https://developer.android.com/develop/connectivity/wifi)
-6) Run auditory_interace/server_main on your IDE
-7) Run the app on the Android Studio
+4) Get your bracelet and belt IDs using helper functions from belt_bracelet_integration, fill them in the MainActivity.kt and BleManager.kt to enable Bluetooth connection with devices through the app (skip if you want to test without the belt/bracelet)
+5) Add .env file in the auditory_interface, put there OPENAI_API_KEY=your_API_key (Note: currently, the system by default connects to the OpenAI API to utilize ChatGPT as the backbone of the MCP server. If you want to use different provider, adapt scripts accordingly)
+6) Connect your smartphone to the Android Studio (https://developer.android.com/develop/connectivity/wifi)
+7) Run auditory_interace/server_main on your IDE
+8) Run the app on the Android Studio
 
 If everything worked properly, you should see the live feed from your smarphone camera on your computer, and once you say wake word ('Hans' by default) the smartphone will transcribe your request and send it to the MCP server for further processing.
