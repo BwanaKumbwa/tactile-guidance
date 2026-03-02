@@ -480,21 +480,24 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                             answer = answer.replace("[SPEED:FAST]", "")
                         }
 
-                        if (answer.contains("[SHUTDOWN]")) {
-                            val finalAnswer = answer.replace("[SHUTDOWN]", "Shutting down. Goodbye.")
+                        val isShutdown = answer.contains("[SHUTDOWN]")
+                        val isDisconnect = answer.contains("[DISCONNECT]")
+
+                        if (isShutdown || isDisconnect) {
+                            var finalAnswer = answer
+                            if (isShutdown) finalAnswer = finalAnswer.replace("[SHUTDOWN]", "Shutting down the server. Goodbye.")
+                            if (isDisconnect) finalAnswer = finalAnswer.replace("[DISCONNECT]", "Disconnecting. Goodbye.")
 
                             runOnUiThread {
                                 tvAiResponse.text = "AI: $finalAnswer"
-                                // Speak goodbye
                                 tts.speak(finalAnswer, TextToSpeech.QUEUE_FLUSH, null, null)
 
-                                // Wait 2.5 seconds for TTS to finish, then brutally kill app
                                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                                     finishAndRemoveTask()
-                                    kotlin.system.exitProcess(0) // Kills the app and all sockets instantly
+                                    kotlin.system.exitProcess(0)
                                 }, 3000)
                             }
-                            return // Exit the onResponse function so it doesn't run the normal TTS speak below
+                            return // Stop normal processing
                         }
 
                         runOnUiThread {
