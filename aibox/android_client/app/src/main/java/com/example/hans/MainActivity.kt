@@ -33,6 +33,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.IOException
+import java.nio.ByteBuffer
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.Locale
@@ -244,29 +245,44 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private fun processImage(image: ImageProxy) {
         try {
             val bitmap = image.toBitmap()
-
-            // Resize to 640 width
             val scaledBitmap = Bitmap.createScaledBitmap(
-                bitmap,
-                640,
-                (640.toFloat() / bitmap.width * bitmap.height).toInt(),
-                true
+                bitmap, 640, (640.toFloat() / bitmap.width * bitmap.height).toInt(), true
             )
 
-            val out = ByteArrayOutputStream()
-            scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 60, out)
-            val imageBytes = out.toByteArray()
+            val outRgb = ByteArrayOutputStream()
+            scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 60, outRgb)
+            val rgbBytes = outRgb.toByteArray()
 
-            // Binary Optimization (Okio)
-            val byteString = imageBytes.toByteString(0, imageBytes.size)
+            // =========================================================
+            // HARDWARE DEPTH INJECTION
+            // =========================================================
+            // Call your future ARCore/Camera2 depth extractor here.
+            // It should return a Grayscale JPEG or PNG byte array.
+            val depthBytes = getHardwareDepthBytes()
 
+            // Pack both into a single Binary Payload
+            // [4 Bytes: Length of RGB] + [RGB Bytes] + [Depth Bytes]
+            val buffer = java.nio.ByteBuffer.allocate(4 + rgbBytes.size + depthBytes.size)
+            buffer.putInt(rgbBytes.size)
+            buffer.put(rgbBytes)
+            buffer.put(depthBytes)
+
+            val byteString = okio.ByteString.of(*buffer.array())
             webSocket?.send(byteString)
+            // =========================================================
 
         } catch (e: Exception) {
             Log.e("HANS", "Error processing frame", e)
         } finally {
             image.close()
         }
+    }
+
+    private fun getHardwareDepthBytes(): ByteArray {
+        // TODO: Replace this with ARCore or Camera2 Depth API extraction.
+        // Returning an empty array means the PC will safely fallback to the ML Estimator
+        // until you implement this.
+        return ByteArray(0)
     }
 
     // =================================================================

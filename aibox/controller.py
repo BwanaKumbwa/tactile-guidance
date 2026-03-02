@@ -512,20 +512,32 @@ class TaskController(AutoAssign):
             if not self.run_depth_estimator:
                 depth_img = None
             else:
-                if frame % 10 == 0:
-                    depth_img, _ = self.depth_estimator.predict_depth(im0)
+                # Check for hardware depth map
+                if hasattr(self.dataset, 'current_depth') and self.dataset.current_depth is not None:
+                    depth_img = self.dataset.current_depth
+                    
+                    # Hardware depth maps are often lower resolution than RGB.
+                    # Resize it to match the RGB frame so bounding boxes align perfectly.
+                    if depth_img.shape[:2] != im0.shape[:2]:
+                        depth_img = cv2.resize(depth_img, (im0.shape[1], im0.shape[0]), interpolation=cv2.INTER_NEAREST)
+                        
                     outputs = bbs_to_depth(im0, depth_img, outputs)
                 else:
-                    if prev_outputs.size > 0:
-                        for output in outputs:
-                            if output[4] != -1:
-                                match = prev_outputs[prev_outputs[:, 4] == output[4]]
-                            else:
-                                match = prev_outputs[prev_outputs[:, 5] == output[5]]
-                            if match.size > 0:
-                                output[7] = match[0][7]
-                            else:
-                                output[7] = -1
+                    # ML fallback (if phone doesn't send depth)
+                    if frame % 10 == 0:
+                        depth_img, _ = self.depth_estimator.predict_depth(im0)
+                        outputs = bbs_to_depth(im0, depth_img, outputs)
+                    else:
+                        if prev_outputs.size > 0:
+                            for output in outputs:
+                                if output[4] != -1:
+                                    match = prev_outputs[prev_outputs[:, 4] == output[4]]
+                                else:
+                                    match = prev_outputs[prev_outputs[:, 5] == output[5]]
+                                if match.size > 0:
+                                    output[7] = match[0][7]
+                                else:
+                                    output[7] = -1
 
             # Set current tracking information as previous info
             prev_outputs = np.array(outputs)

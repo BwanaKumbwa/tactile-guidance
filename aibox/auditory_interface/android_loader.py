@@ -51,10 +51,14 @@ class AndroidSource:
         if self.stop_event.is_set():
             raise StopIteration
 
-        # Grab raw frame (any resolution)
-        im0 = self.frame_queue.get()
-        if im0 is None:
-            raise StopIteration
+        # Unpack the tuple
+        item = self.frame_queue.get()
+        if item is None: raise StopIteration
+        
+        im0, depth_map = item
+        
+        # Save it to the dataset object so controller.py can access it
+        self.current_depth = depth_map 
 
         # Resize + pad to a square TARGET_SIZE×TARGET_SIZE
         TARGET = self.img_size
@@ -74,12 +78,11 @@ class AndroidSource:
                                 cv2.BORDER_CONSTANT, value=(114, 114, 114))
 
         # BGR → RGB, HWC → CHW, add batch dim
-        im = im[..., ::-1]               # BGR → RGB
-        im = im.transpose((2, 0, 1))     # HWC → CHW
+        im = letterbox(im0, self.img_size, stride=self.stride, auto=self.auto)[0]
+        im = im.transpose((2, 0, 1))[::-1]  
         im = np.ascontiguousarray(im)
-        im = im[None, ...]               # shape = (1,3,TARGET,TARGET)
+        im = im[None] 
 
-        # Return the tuple YOLO expects
         return self.sources, im, [im0], None, ''
 
     def __len__(self):

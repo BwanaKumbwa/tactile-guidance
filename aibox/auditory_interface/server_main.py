@@ -235,8 +235,24 @@ async def video_endpoint(websocket: WebSocket):
     try:
         while True:
             data = await websocket.receive_bytes() 
-            np_arr = np.frombuffer(data, np.uint8)
+            
+            # --- BINARY UNPACKING ---
+            # Extract RGB Image
+            rgb_len = int.from_bytes(data[0:4], byteorder='big')
+            rgb_bytes = data[4 : 4+rgb_len]
+            np_arr = np.frombuffer(rgb_bytes, np.uint8)
             frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+            
+            # Extract Depth Map (if phone sent it)
+            depth_map = None
+            if len(data) > 4 + rgb_len:
+                depth_bytes = data[4+rgb_len : ]
+                depth_arr = np.frombuffer(depth_bytes, np.uint8)
+                # Use IMREAD_ANYDEPTH to preserve 16-bit hardware depth if sent as PNG
+                depth_map = cv2.imdecode(depth_arr, cv2.IMREAD_ANYDEPTH) 
+                if depth_map is not None:
+                    depth_map = cv2.rotate(depth_map, cv2.ROTATE_90_CLOCKWISE)
+
             if frame is not None:
                 frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
                 latest_frame_ref["img"] = frame.copy()
@@ -244,8 +260,9 @@ async def video_endpoint(websocket: WebSocket):
                 if frame_queue.full():
                     try: frame_queue.get_nowait()
                     except queue.Empty: pass
-                    
-                frame_queue.put(frame) 
+                
+                # Push BOTH images to the YOLO loop
+                frame_queue.put((frame, depth_map)) 
                 
     except WebSocketDisconnect:
         print("❌ Phone Disconnected")
