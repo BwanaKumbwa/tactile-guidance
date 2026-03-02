@@ -109,6 +109,24 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         }
 
         tts = TextToSpeech(this, this)
+
+        val rootLayout = findViewById<androidx.constraintlayout.widget.ConstraintLayout>(R.id.rootLayout)
+
+        rootLayout.setOnClickListener {
+            // If the AI is currently talking, shut it up and start listening
+            if (::tts.isInitialized && tts.isSpeaking) {
+                Log.d("HANS", "User interrupted AI. Stopping TTS.")
+
+                // 1. Instantly stop the speech
+                tts.stop()
+
+                // 2. Update the UI so the user knows it registered
+                tvAiResponse.text = "AI: (Interrupted)"
+
+                // 3. Force the microphone to restart immediately
+                restartListening()
+            }
+        }
     }
 
     private fun initSystem() {
@@ -433,6 +451,9 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         val json = JSONObject()
         json.put("text", text)
 
+        json.put("bracelet_connected", braceletManager.isConnected())
+        json.put("belt_connected", beltManager.isConnected())
+
         val body = json.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
         val request = Request.Builder().url(COMMAND_URL).post(body).build()
 
@@ -446,7 +467,35 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 if (responseData != null) {
                     try {
                         val jsonRes = JSONObject(responseData)
-                        val answer = jsonRes.optString("answer", "Done")
+                        var answer = jsonRes.optString("answer", "Done")
+
+                        if (answer.contains("[SPEED:SLOW]")) {
+                            tts.setSpeechRate(0.5f) // Half speed
+                            answer = answer.replace("[SPEED:SLOW]", "")
+                        } else if (answer.contains("[SPEED:NORMAL]")) {
+                            tts.setSpeechRate(1.0f) // Normal speed
+                            answer = answer.replace("[SPEED:NORMAL]", "")
+                        } else if (answer.contains("[SPEED:FAST]")) {
+                            tts.setSpeechRate(1.5f) // 1.5x speed
+                            answer = answer.replace("[SPEED:FAST]", "")
+                        }
+
+                        if (answer.contains("[SHUTDOWN]")) {
+                            val finalAnswer = answer.replace("[SHUTDOWN]", "Shutting down. Goodbye.")
+
+                            runOnUiThread {
+                                tvAiResponse.text = "AI: $finalAnswer"
+                                // Speak goodbye
+                                tts.speak(finalAnswer, TextToSpeech.QUEUE_FLUSH, null, null)
+
+                                // Wait 2.5 seconds for TTS to finish, then brutally kill app
+                                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                                    finishAndRemoveTask()
+                                    kotlin.system.exitProcess(0) // Kills the app and all sockets instantly
+                                }, 3000)
+                            }
+                            return // Exit the onResponse function so it doesn't run the normal TTS speak below
+                        }
 
                         runOnUiThread {
                             tvAiResponse.text = "AI: $answer"

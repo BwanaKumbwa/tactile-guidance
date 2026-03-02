@@ -17,6 +17,7 @@ class BleManager(private val context: Context) {
     private var bluetoothGatt: BluetoothGatt? = null
     private val adapter: BluetoothAdapter? = (context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter
     private val handler = Handler(Looper.getMainLooper())
+    private var connectionState = BluetoothProfile.STATE_DISCONNECTED
 
     // =================================================================
     // UUIDs
@@ -140,6 +141,7 @@ class BleManager(private val context: Context) {
 
     private val gattCallback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
+            connectionState = newState
             if (newState == BluetoothProfile.STATE_CONNECTED) {
                 Log.i("BLE", "Connected. Discovering Services...")
                 // Give Android 500ms to stabilize encryption/bonding before discovering
@@ -221,5 +223,9 @@ class BleManager(private val context: Context) {
         bluetoothGatt?.disconnect()
         bluetoothGatt?.close()
         bluetoothGatt = null
+    }
+
+    fun isConnected(): Boolean {
+        return connectionState == BluetoothProfile.STATE_CONNECTED
     }
 }

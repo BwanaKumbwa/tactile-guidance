@@ -121,11 +121,10 @@ class TaskController(AutoAssign):
         visible = []
         for item in outputs:
             cls = int(item[5])
-            # names_obj only contains object classes, so this naturally
-            # filters out hand detections whose cls >= index_add
-            if cls in self.names_obj:
+            # self.master_label contains both COCO objects and hand classes
+            if hasattr(self, 'master_label') and cls in self.master_label:
                 visible.append({
-                    "name":       self.names_obj[cls],
+                    "name":       self.master_label[cls],
                     "confidence": float(item[6]),
                     "track_id":   int(item[4]),
                     "depth":      float(item[7]) if len(item) > 7 else -1,

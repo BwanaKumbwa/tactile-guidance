@@ -1,3 +1,6 @@
+import os
+import signal
+import time
 import asyncio
 import cv2
 import numpy as np
@@ -33,6 +36,8 @@ class SharedState:
         self._current_target = "none"
         self._visible_objects = []
         self._available_classes = []
+        self._bracelet_connected = False
+        self._belt_connected = False
 
     def set_target(self, target: str):
         with self._lock: self._current_target = target
@@ -46,6 +51,13 @@ class SharedState:
         with self._lock: self._available_classes = list(classes)
     def get_available_classes(self):
         with self._lock: return list(self._available_classes)
+    def set_hardware_status(self, bracelet: bool, belt: bool):
+        with self._lock:
+            self._bracelet_connected = bracelet
+            self._belt_connected = belt
+    def get_hardware_status(self) -> dict:
+        with self._lock:
+            return {"bracelet": self._bracelet_connected, "belt": self._belt_connected}
 
 shared_state = SharedState()
 
@@ -131,8 +143,22 @@ class InternalCommand(BaseModel):
 def receive_internal_command(cmd: InternalCommand):
     """server_hans.py calls this to trigger YOLO changes"""
     mcp_queue.put({"instruction": cmd.instruction, "value": cmd.value})
+    
     if cmd.instruction == "set_target":
         shared_state.set_target(cmd.value)
+        
+    elif cmd.instruction == "stop":
+        # We start a background timer to kill the server in 3 seconds.
+        # This gives the server enough time to send the final "[SHUTDOWN]" 
+        # HTTP response back to the phone before it dies.
+        def shutdown_server():
+            time.sleep(3)
+            print("🛑 Shutting down FastAPI server...")
+            # This sends the Ctrl+C signal to the server, stopping it gracefully
+            os.kill(os.getpid(), signal.SIGINT)
+            
+        threading.Thread(target=shutdown_server, daemon=True).start()
+        
     return {"status": "ok"}
 
 @app.get("/internal/state")
@@ -143,6 +169,22 @@ def get_internal_state():
         "visible_objects": shared_state.get_visible_objects(),
         "available_classes": shared_state.get_available_classes()
     }
+
+@app.get("/internal/hardware_state")
+def get_internal_state():
+    """server_hans.py calls this to see hardware state"""
+    return {
+        "status": shared_state.get_hardware_status()
+    }
+
+class VerbosityRequest(BaseModel):
+    level: str
+
+@app.post("/internal/verbosity")
+def set_verbosity(req: VerbosityRequest):
+    """server_hans calls this to change LLM prompt"""
+    brain.set_verbosity(req.level)
+    return {"status": "ok"}
 
 # Android endpoints
 @app.websocket("/ws/video")
@@ -206,10 +248,15 @@ async def video_endpoint(websocket: WebSocket):
 
 class CommandRequest(BaseModel):
     text: str
+    bracelet_connected: bool = False
+    belt_connected: bool = False
 
 @app.post("/api/command")
 async def process_command(req: CommandRequest):
     print(f"\n🎤 User audio transcribed as: {req.text}")
+
+    # Save hardware status to shared state so tools can read it
+    shared_state.set_hardware_status(req.bracelet_connected, req.belt_connected)
     
     if mcp_session_global is None:
         return {"answer": "The AI is currently booting up, please wait."}
