@@ -12,4 +12,5 @@ To use Android smartphone as a control device:
 5) Connect your smartphone to the Android Studio (https://developer.android.com/develop/connectivity/wifi)
 6) Run auditory_interace/server_main on your IDE
 7) Run the app on the Android Studio
+
 If everything worked properly, you should see the live feed from your smarphone camera on your computer, and once you say wake word ('Hans' by default) the smartphone will transcribe your request and send it to the MCP server for further processing.
