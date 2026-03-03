@@ -385,6 +385,7 @@ class TaskController(AutoAssign):
 
         if self.shared_state is not None:
             self.shared_state.set_preferences(self.memory.get("preferences", {"speech_speed": "normal", "verbosity": "normal"}))
+            self.shared_state.set_target_list_state(self.memory.get("target_list", []), self.memory.get("list_mode", "ordered"))
 
         # Initialize vars for tracking
         prev_frames = None
@@ -497,6 +498,9 @@ class TaskController(AutoAssign):
                         self.memory["list_mode"] = data["mode"]
                         self.save_memory()
                         
+                        if self.shared_state is not None:
+                            self.shared_state.set_target_list_state(data["targets"], data["mode"])
+
                         if data["mode"] == "ordered" and len(data["targets"]) > 0:
                             first_target = data["targets"][0]
                             if first_target in coco_labels.values():
@@ -520,6 +524,9 @@ class TaskController(AutoAssign):
                             if curr_target in self.memory["target_list"]:
                                 self.memory["target_list"].remove(curr_target)
                             self.save_memory()
+
+                            if self.shared_state is not None:
+                                self.shared_state.set_target_list_state(self.memory["target_list"], self.memory["list_mode"])
                             
                             # Decide what to do next
                             if len(self.memory["target_list"]) == 0:
@@ -570,6 +577,10 @@ class TaskController(AutoAssign):
                     elif instruction == "clear_list":
                         self.memory["target_list"] = []
                         self.save_memory()
+
+                        if self.shared_state is not None:
+                            self.shared_state.set_target_list_state([], "ordered")
+
                         self.class_target_obj = -1
                         self._publish_target("none")
                         if self.belt_controller: self.belt_controller.stop_vibration()

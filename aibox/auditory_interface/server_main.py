@@ -40,6 +40,8 @@ class SharedState:
         self._bracelet_connected = False
         self._belt_connected = False
         self._preferences = {"speech_speed": "normal", "verbosity": "normal"}
+        self._target_list = []
+        self._list_mode = "ordered"
 
     def set_target(self, target: str):
         with self._lock: self._current_target = target
@@ -64,6 +66,13 @@ class SharedState:
         with self._lock: self._preferences = prefs
     def get_preferences(self) -> dict:
         with self._lock: return self._preferences
+    def set_target_list_state(self, target_list: list, mode: str):
+        with self._lock:
+            self._target_list = list(target_list)
+            self._list_mode = mode
+    def get_target_list_state(self) -> dict:
+        with self._lock:
+            return {"targets": list(self._target_list), "mode": self._list_mode}
 
 shared_state = SharedState()
 
@@ -175,11 +184,14 @@ def receive_internal_command(cmd: InternalCommand):
 
 @app.get("/internal/state")
 def get_internal_state():
-    """server_hans.py calls this to read what YOLO sees"""
+    """server_hans.py calls this to read what YOLO sees and what the active goals are"""
+    list_state = shared_state.get_target_list_state()
     return {
         "target": shared_state.get_target(),
         "visible_objects": shared_state.get_visible_objects(),
-        "available_classes": shared_state.get_available_classes()
+        "available_classes": shared_state.get_available_classes(),
+        "target_list": list_state["targets"],
+        "list_mode": list_state["mode"]
     }
 
 @app.get("/internal/hardware_state")
