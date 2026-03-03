@@ -1,5 +1,6 @@
 import sys
 import os
+import json
 import requests
 from mcp.server.fastmcp import FastMCP
 
@@ -11,6 +12,42 @@ mcp = FastMCP("HANS-Controller")
 
 # The internal URL of your FastAPI server
 FASTAPI_URL = "http://localhost:8000/internal"
+
+@mcp.tool()
+def set_target_list(targets: list[str], mode: str) -> str:
+    """
+    Set a list of targets for the user to find and grasp.
+    Mode MUST be 'ordered' (find one by one in exact order) OR 'unordered' (find whichever is seen first).
+    By default, if the user asks for a list, use 'ordered'.
+    """
+    data = {"targets": targets, "mode": mode}
+    requests.post(
+        f"{FASTAPI_URL}/command", json={"instruction": "set_target_list", "value": json.dumps(data)}
+    )
+    return f"Target list updated to {mode} mode with targets: {targets}"
+
+@mcp.tool()
+def clear_target_list() -> str:
+    """
+    Call this when the user wants to cancel navigation, clear their active targets, 
+    or abort a list of objects they were searching for.
+    """
+    requests.post(f"{FASTAPI_URL}/command", json={"instruction": "clear_list", "value": ""})
+    return "The target list has been wiped clean and navigation has stopped."
+
+@mcp.tool()
+def update_user_preferences(speech_speed: str = None, verbosity: str = None) -> str:
+    """
+    Call this when the user asks you to talk faster/slower, or give shorter/longer answers.
+    Allowed speech_speed values: "slow", "normal", "fast".
+    Allowed verbosity values: "low", "normal", "high".
+    """
+    data = {}
+    if speech_speed: data["speech_speed"] = speech_speed.lower()
+    if verbosity: data["verbosity"] = verbosity.lower()
+    
+    requests.post(f"{FASTAPI_URL}/command", json={"instruction": "update_preferences", "value": json.dumps(data)})
+    return f"Saved preferences to memory: {data}"
 
 @mcp.tool()
 def control_vision(instruction: str, value: str = "") -> str:
@@ -35,6 +72,19 @@ def control_vision(instruction: str, value: str = "") -> str:
         return f"Success: {instruction} -> {value}"
     except Exception as e:
         return f"Failed: {e}"
+    
+@mcp.tool()
+def mark_grasped() -> str:
+    """
+    Call this ONLY when the user confirms they have successfully grasped the object 
+    (e.g., "Hans, grasped", "I got it"). It removes the item from the list and advances to the next object.
+    """
+    requests.post(
+        f"{FASTAPI_URL}/command", 
+        json={"instruction": "mark_grasped", "value": ""}
+    )
+    return "Object marked as grasped. The system will automatically advance to the next target."
+
 
 @mcp.tool()
 def pause_navigation() -> str:

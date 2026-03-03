@@ -23,10 +23,12 @@ for path in paths_to_add:
 
 # Utility
 import time
+from datetime import datetime
 import pandas as pd
 import numpy as np
 import threading
 from playsound import playsound
+import json
 
 # Image processing
 import cv2
@@ -60,23 +62,35 @@ def play_start():
 
 
 def bbs_to_depth(image, depth=None, bbs=None):
-    if bbs is not None:
+    if bbs is not None and depth is not None:
         outputs = []
         for bb in bbs:
             if bb[7] == -1:
-                x,y,w,h = [int(coord) for coord in bb[:4]]
-                x2 = x+(w//2)
-                y2 = y+(h//2)
-                roi = depth[y:y2, x:x2]
-                mean_depth = np.mean(roi)
-                bb[7] = mean_depth
-                outputs.append(bb)
-            else:
-                outputs.append(bb)
+                x_c, y_c, w, h = [int(coord) for coord in bb[:4]]
+                
+                # Shrink the search window to the center 50% of the bounding box.
+                search_w = int(w * 0.25) 
+                search_h = int(h * 0.25)
+                
+                x1 = max(0, x_c - search_w)
+                y1 = max(0, y_c - search_h)
+                x2 = min(depth.shape[1], x_c + search_w)
+                y2 = min(depth.shape[0], y_c + search_h)
+                
+                roi = depth[y1:y2, x1:x2]
+                
+                valid_pixels = roi[roi > 0]
+                
+                if valid_pixels.size > 0:
+                    # Find the 15th percentile foreground object
+                    true_depth_meters = float(np.percentile(valid_pixels, 15))
+                else:
+                    true_depth_meters = -1.0 # No data
+                    
+                bb[7] = true_depth_meters
+            outputs.append(bb)
         return np.array(outputs)
-    else:
-        print('There are no BBs to calculate the depth for.')
-        return None
+    return bbs
 
 
 def close_app(controller):
@@ -334,6 +348,39 @@ class TaskController(AutoAssign):
 
         print(f'\nSTARTING MAIN LOOP')
 
+        # Memory component
+        file = Path(__file__).resolve()
+        root = file.parent
+        # Save securely into the 'results' folder to avoid cluttering the root
+        memory_file = root / 'results' / f"memory_participant_{self.participant}.json"
+        memory_file.parent.mkdir(parents=True, exist_ok=True)
+        memory_file_path = str(memory_file)
+
+        if os.path.exists(memory_file_path):
+            with open(memory_file_path, "r") as f:
+                self.memory = json.load(f)
+            # Restore saved calibrations
+            self.participant_vibration_intensities = self.memory.get("calibration", self.participant_vibration_intensities)
+            print(f"[System] Memory loaded successfully from {memory_file_path}.")
+        else:
+            self.memory = {
+                "target_list": [],
+                "list_mode": "ordered", # ordered, unordered
+                "grasped_objects": [],
+                "calibration": self.participant_vibration_intensities,
+                "preferences": {"speech_speed": "normal", "verbosity": "normal"},
+                "command_history": []
+            }
+            print("[System] No memory file found. Creating new memory file.")
+
+        def save_memory():
+            with open(memory_file, "w") as f:
+                json.dump(self.memory, f, indent=4)
+        self.save_memory = save_memory
+
+        if self.shared_state is not None:
+            self.shared_state.set_preferences(self.memory.get("preferences", {"speech_speed": "normal", "verbosity": "normal"}))
+
         # Initialize vars for tracking
         prev_frames = None
         curr_frames = None
@@ -350,7 +397,16 @@ class TaskController(AutoAssign):
         automatic_experiment_msg = f'The experiment will be run automatically. The selected target objects, in sequence, are:\n{self.target_objs}'
         print(manual_experiment_msg) if self.manual_entry else print(automatic_experiment_msg)
         
-        self._publish_target("none")
+        # Be default, auto resume targets after restart - to validate whether it is optimal from the user perspective
+        if self.memory.get("target_list") and self.memory.get("list_mode") == "ordered":
+            first_target = self.memory["target_list"][0]
+            if first_target in coco_labels.values():
+                self.class_target_obj = next(k for k, v in coco_labels.items() if v == first_target)
+                self.classes_obj = [self.class_target_obj]
+                self._publish_target(first_target)
+                print(f"[System] Resumed saved target: {first_target}")
+        else:
+            self._publish_target("none")
 
         self.trial_start_time = 'NA'
         self.trial_end_time = 'NA'
@@ -420,12 +476,99 @@ class TaskController(AutoAssign):
                         self.bracelet_controller.vibrate = True
                         print("[System] Navigation resumed", file=sys.stderr)
 
-                    # 5. Adjust vibration intensity
+                    # 5. Adjust vibration intensity and save to memory
                     elif instruction == "adjust_intensity":
                         motor, intensity = value.split(":")
                         intensity = int(intensity)
                         self.participant_vibration_intensities[motor] = intensity
-                        print(f"[System] {motor} intensity → {intensity}", file=sys.stderr)
+                        self.memory["calibration"][motor] = intensity
+                        self.save_memory()
+                        print(f"[System] {motor} intensity → {intensity} (Saved)", file=sys.stderr)
+
+                    # 6. Receive a List of Targets
+                    elif instruction == "set_target_list":
+                        data = json.loads(value) # Expects: {"targets": ["cup", "bottle"], "mode": "ordered"}
+                        self.memory["target_list"] = data["targets"]
+                        self.memory["list_mode"] = data["mode"]
+                        self.save_memory()
+                        
+                        if data["mode"] == "ordered" and len(data["targets"]) > 0:
+                            first_target = data["targets"][0]
+                            if first_target in coco_labels.values():
+                                self.class_target_obj = next(k for k, v in coco_labels.items() if v == first_target)
+                                self.classes_obj = [self.class_target_obj]
+                                self._publish_target(first_target)
+                                print(f"[System] Ordered list started. Target: {first_target}")
+                        else:
+                            self.class_target_obj = -1
+                            self._publish_target("none")
+                            print(f"[System] Unordered list started. Waiting to see objects...")
+
+                    # 7. Mark as Grasped (Proceed to Next)
+                    elif instruction == "mark_grasped":
+                        curr_target = self.shared_state.get_target()
+                        if curr_target != "none":
+                            # Save to history
+                            if curr_target not in self.memory["grasped_objects"]:
+                                self.memory["grasped_objects"].append(curr_target)
+                            # Remove from queue
+                            if curr_target in self.memory["target_list"]:
+                                self.memory["target_list"].remove(curr_target)
+                            self.save_memory()
+                            
+                            # Decide what to do next
+                            if len(self.memory["target_list"]) == 0:
+                                print("[System] List complete. Going idle.")
+                                self.class_target_obj = -1
+                                self._publish_target("none")
+                                if self.belt_controller: self.belt_controller.stop_vibration()
+                                
+                            elif self.memory["list_mode"] == "ordered":
+                                next_tgt = self.memory["target_list"][0]
+                                self.class_target_obj = next(k for k, v in coco_labels.items() if v == next_tgt)
+                                self.classes_obj = [self.class_target_obj]
+                                self._publish_target(next_tgt)
+                                print(f"[System] Next ordered target: {next_tgt}")
+                                
+                            else:
+                                print("[System] Object Grasped. Returning to idle until next list item is seen.")
+                                self.class_target_obj = -1
+                                self._publish_target("none")
+                                if self.belt_controller: self.belt_controller.stop_vibration()
+
+                    # 8. Log command and response
+                    elif instruction == "log_interaction":
+                        data = json.loads(value)
+                        stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        
+                        entry = {
+                            "time": stamp, 
+                            "user_command": data.get("user_text", ""),
+                            "ai_response": data.get("ai_response", "")
+                        }
+                        
+                        self.memory.setdefault("command_history", []).append(entry)
+                        self.save_memory()
+
+                    # 9. Update user preferences regarding speech speed and verbosity
+                    elif instruction == "update_preferences":
+                        data = json.loads(value)
+                        prefs = self.memory.setdefault("preferences", {"speech_speed": "normal", "verbosity": "normal"})
+                        if "speech_speed" in data: prefs["speech_speed"] = data["speech_speed"]
+                        if "verbosity" in data: prefs["verbosity"] = data["verbosity"]
+                        self.save_memory()
+                        if self.shared_state is not None:
+                            self.shared_state.set_preferences(prefs)
+                        print(f"[System] Preferences updated: {prefs}")
+
+                    # 10. Clear target list
+                    elif instruction == "clear_list":
+                        self.memory["target_list"] = []
+                        self.save_memory()
+                        self.class_target_obj = -1
+                        self._publish_target("none")
+                        if self.belt_controller: self.belt_controller.stop_vibration()
+                        print("[System] Target list cleared.")
 
                 except queue.Empty:
                     pass
@@ -525,8 +668,11 @@ class TaskController(AutoAssign):
                 else:
                     # ML fallback (if phone doesn't send depth)
                     if frame % 10 == 0:
-                        depth_img, _ = self.depth_estimator.predict_depth(im0)
-                        outputs = bbs_to_depth(im0, depth_img, outputs)
+                        if hasattr(self, 'depth_estimator') and self.depth_estimator is not None:
+                            depth_img, _ = self.depth_estimator.predict_depth(im0)
+                            outputs = bbs_to_depth(im0, depth_img, outputs)
+                        else:
+                            depth_img = None # Safety net
                     else:
                         if prev_outputs.size > 0:
                             for output in outputs:
@@ -544,6 +690,18 @@ class TaskController(AutoAssign):
 
             # Publish visible objects every frame
             self._publish_visible_objects(outputs)
+
+            # Opportunistic targeting (unordered list)
+            if self.class_target_obj == -1 and self.memory.get("list_mode") == "unordered" and len(self.memory.get("target_list", [])) > 0:
+                for *xywh, obj_id, cls, conf, depth_val in outputs:
+                    obj_name = self.master_label.get(int(cls), "unknown")
+                    if obj_name in self.memory["target_list"]:
+                        # Lock onto the first list item that becomes visible
+                        self.class_target_obj = int(cls)
+                        self.classes_obj = [self.class_target_obj]
+                        self._publish_target(obj_name)
+                        print(f"[System] Opportunistic lock on visible target: {obj_name}")
+                        break
 
             # Get FPS
             end = time.perf_counter()
@@ -577,7 +735,17 @@ class TaskController(AutoAssign):
 
             # Navigate the hand
             if not grasped:
-                grasped, curr_target = self.bracelet_controller.navigate_hand(self.belt_controller, outputs, self.class_target_obj, [hand + index_add for hand in self.classes_hand], depth_img, self.participant_vibration_intensities, self.metric)
+                if depth_img is not None:
+                    depth_img_metric = depth_img.copy()
+                    depth_img_metric[depth_img == 0] = 10.0 # push unknown space out of the way
+                else:
+                    depth_img_metric = None
+
+                grasped, curr_target = self.bracelet_controller.navigate_hand(
+                    self.belt_controller, outputs, self.class_target_obj, 
+                    [hand + index_add for hand in self.classes_hand], 
+                    depth_img_metric, self.participant_vibration_intensities, self.metric
+                )
             else:
                 if vibration_timer is None:
                     vibration_timer = time.time()
@@ -609,7 +777,10 @@ class TaskController(AutoAssign):
                         if self.run_object_tracker:
                             parts.append(f'ID: {id} ')
                         if self.run_depth_estimator:
-                            parts.append(f'Depth: {depth:.2f}m' if self.metric else f'Depth: {5000 / depth:.2f}')
+                            if depth != -1.0:
+                                parts.append(f'Depth: {depth:.2f}m ')
+                            else:
+                                parts.append(f'Depth: N/A ')
 
                     label = ''.join(parts)
 
@@ -657,7 +828,40 @@ class TaskController(AutoAssign):
                         for corner in self.bracelet_controller.corners:
                             cv2.circle(im0, (corner[1]+minxc, corner[0]+minyc), radius=1, color=(0, 255, 0), thickness=-1)
                     
-                    side_by_side = create_side_by_side(im0, depth_img, False)
+                    if depth_img is not None and depth_img.size > 0:
+                        valid_depths = depth_img[depth_img > 0]
+                        
+                        if valid_depths.size > 0:
+                            # Dynamic distance capping: Find the back wall (98th percentile to ignore noise)
+                            scene_max_depth = np.percentile(valid_depths, 98)
+                            
+                            # Arbitrary Threshold: Cap it at 5.0 meters max
+                            scene_max_depth = min(scene_max_depth, 5.0)
+                            scene_max_depth = max(scene_max_depth, 0.1) # prevent division by zero
+
+                            # Stretch the colors based on the room size
+                            depth_norm = np.clip(depth_img / scene_max_depth, 0, 1) * 255.0
+                            depth_8u = depth_norm.astype(np.uint8)
+
+                            depth_filtered = cv2.medianBlur(depth_8u, 5)
+                            depth_colormap = cv2.applyColorMap(depth_filtered, cv2.COLORMAP_MAGMA)
+                            
+                            # Black out invalid pixels
+                            depth_colormap[depth_img == 0] = [0, 0, 0]
+
+                            if depth_colormap.shape[:2] != im0.shape[:2]:
+                                depth_colormap = cv2.resize(depth_colormap, (im0.shape[1], im0.shape[0]))
+
+                            side_by_side = np.hstack((im0, depth_colormap))
+                        else:
+                            side_by_side = np.hstack((im0, np.zeros_like(im0)))
+                    else:
+                        black_placeholder = np.zeros_like(im0)
+                        cv2.putText(black_placeholder, "Waiting for Hardware Depth...", 
+                                    (50, im0.shape[0]//2), cv2.FONT_HERSHEY_SIMPLEX, 
+                                    0.8, (255, 255, 255), 2)
+                        side_by_side = np.hstack((im0, black_placeholder))
+
                     cv2.imshow("AIBox & Depth", side_by_side)
                 else:
                     cv2.imshow("AIBox", im0)
@@ -751,7 +955,12 @@ class TaskController(AutoAssign):
             print('SKIPPING OBJECT TRACKER INITIALIZATION')
 
         if self.run_depth_estimator:
-            self.load_depth_estimator()
+            # By default, use hardware depth obtained from Android app
+            if hasattr(self, 'dataset') and type(self.dataset).__name__ == 'AndroidSource':
+                print('USING ANDROID HARDWARE DEPTH: SKIPPING ML DEPTH ESTIMATOR INITIALIZATION')
+                self.depth_estimator = None 
+            else:
+                self.load_depth_estimator()
         else:
             print('SKIPPING DEPTH ESTIMATOR INITIALIZATION')
 

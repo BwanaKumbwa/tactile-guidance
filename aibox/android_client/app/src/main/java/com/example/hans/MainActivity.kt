@@ -264,7 +264,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
             // 2. Process Depth (If available)
             var depthBytes = ByteArray(0)
             if (depthImage != null) {
-                depthBytes = depth16ToJpegBytes(depthImage)
+                depthBytes = depth16ToPngBytes(depthImage)
             }
 
             // 3. Pack into Multiplexed Protocol: [4 Bytes: Length of RGB] + [RGB Bytes] + [Depth Bytes]
@@ -310,26 +310,39 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
         return finalOut.toByteArray()
     }
 
-    private fun depth16ToJpegBytes(depthImage: Image): ByteArray {
-        val depthBuffer = depthImage.planes[0].buffer
+    private fun depth16ToPngBytes(depthImage: Image): ByteArray {
+        val plane = depthImage.planes[0]
+        val buffer = plane.buffer
+        buffer.order(java.nio.ByteOrder.LITTLE_ENDIAN)
+
         val width = depthImage.width
         val height = depthImage.height
+        val rowStride = plane.rowStride
+        val pixelStride = plane.pixelStride
 
         val pixels = IntArray(width * height)
-        for (i in 0 until width * height) {
-            // ARCore 16-bit depth (First 3 bits are confidence, last 13 bits are distance in mm)
-            val depthSample = depthBuffer.short.toInt() and 0xFFFF
-            val distanceMm = depthSample and 0x1FFF
 
-            // Map 0-8000mm to 0-255 grayscale
-            var gray = (distanceMm / 8000f * 255).toInt()
-            if (gray > 255) gray = 255
-            pixels[i] = android.graphics.Color.rgb(gray, gray, gray)
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                val byteIndex = (y * rowStride) + (x * pixelStride)
+                val distanceMm = buffer.getShort(byteIndex).toInt() and 0xFFFF
+                val pixelIndex = (y * width) + x
+
+                if (distanceMm == 0) {
+                    pixels[pixelIndex] = android.graphics.Color.rgb(0, 0, 0)
+                } else {
+                    // Pack the 16-bit distance into the Red and Green channels
+                    val r = (distanceMm shr 8) and 0xFF
+                    val g = distanceMm and 0xFF
+                    // B is kept at 0
+                    pixels[pixelIndex] = android.graphics.Color.rgb(r, g, 0)
+                }
+            }
         }
 
         val bitmap = Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888)
         val out = ByteArrayOutputStream()
-        bitmap.compress(Bitmap.CompressFormat.JPEG, 50, out)
+        bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
         return out.toByteArray()
     }
 

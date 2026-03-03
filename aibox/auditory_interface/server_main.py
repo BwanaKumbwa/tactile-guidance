@@ -13,6 +13,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
 from pathlib import Path
+import re
 
 file = Path(__file__).resolve()
 root = file.parents[0] 
@@ -38,6 +39,7 @@ class SharedState:
         self._available_classes = []
         self._bracelet_connected = False
         self._belt_connected = False
+        self._preferences = {"speech_speed": "normal", "verbosity": "normal"}
 
     def set_target(self, target: str):
         with self._lock: self._current_target = target
@@ -58,6 +60,10 @@ class SharedState:
     def get_hardware_status(self) -> dict:
         with self._lock:
             return {"bracelet": self._bracelet_connected, "belt": self._belt_connected}
+    def set_preferences(self, prefs: dict):
+        with self._lock: self._preferences = prefs
+    def get_preferences(self) -> dict:
+        with self._lock: return self._preferences
 
 shared_state = SharedState()
 
@@ -75,9 +81,9 @@ openai_tools_global = []
 class SimArgs:
     def __init__(self):
         self.participant = 1
-        self.condition = 'multiple_objects' # grasping, multiple_objects, depth_navigation
+        self.condition = 'depth_navigation' # grasping, multiple_objects, depth_navigation
         self.relative = False
-        self.mock_navigate = False 
+        self.mock_navigate = False
         self.save_video = False
 
 def run_ai_logic():
@@ -248,9 +254,16 @@ async def video_endpoint(websocket: WebSocket):
             if len(data) > 4 + rgb_len:
                 depth_bytes = data[4+rgb_len : ]
                 depth_arr = np.frombuffer(depth_bytes, np.uint8)
-                # Use IMREAD_ANYDEPTH to preserve 16-bit hardware depth if sent as PNG
-                depth_map = cv2.imdecode(depth_arr, cv2.IMREAD_ANYDEPTH) 
-                if depth_map is not None:
+                
+                # Decode as a color image
+                depth_bgr = cv2.imdecode(depth_arr, cv2.IMREAD_COLOR)
+                if depth_bgr is not None:
+                    # OpenCV uses BGR order. Blue=0, Green=1, Red=2
+                    # Reassemble the 16-bit integer: (Red * 256) + Green
+                    depth_mm = (depth_bgr[:,:,2].astype(np.float32) * 256.0) + depth_bgr[:,:,1].astype(np.float32)
+                    
+                    # Convert to metric information
+                    depth_map = depth_mm / 1000.0 
                     depth_map = cv2.rotate(depth_map, cv2.ROTATE_90_CLOCKWISE)
 
             if frame is not None:
@@ -280,17 +293,47 @@ async def process_command(req: CommandRequest):
 
     # Save hardware status to shared state so tools can read it
     shared_state.set_hardware_status(req.bracelet_connected, req.belt_connected)
+
+    # Send information to memory logger
+    mcp_queue.put({"instruction": "log_command", "value": req.text})
     
     if mcp_session_global is None:
         return {"answer": "The AI is currently booting up, please wait."}
 
     try:
+        prefs = shared_state.get_preferences()
+        verbosity_hint = f"\n[System: User preference is {prefs['verbosity']} verbosity.]"
+
         # LLM processing
         answer = await brain.process_query(
             mcp_session_global, 
-            req.text, 
+            req.text + verbosity_hint, 
             openai_tools_global
         )
+    
+        speed_match = re.search(r'\[SPEED:(SLOW|NORMAL|FAST)\]', answer, re.IGNORECASE)
+        
+        if speed_match:
+            # If speed has changed, save it to memory immediately
+            new_speed = speed_match.group(1).lower()
+            prefs["speech_speed"] = new_speed
+            shared_state.set_preferences(prefs)
+            mcp_queue.put({
+                "instruction": "update_preferences", 
+                "value": json.dumps({"speech_speed": new_speed})
+            })
+        else:
+            # Automatically apply the saved preference
+            current_speed = prefs.get('speech_speed', 'normal').upper()
+            answer += f" [SPEED:{current_speed}]"
+
+        # Send command and response to logger
+        log_data = {
+            "user_text": req.text,
+            "ai_response": answer
+        }
+        mcp_queue.put({"instruction": "log_interaction", "value": json.dumps(log_data)})
+
         return {"answer": answer}
         
     except Exception as e:
