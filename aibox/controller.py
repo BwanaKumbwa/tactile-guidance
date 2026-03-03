@@ -351,10 +351,15 @@ class TaskController(AutoAssign):
         # Memory component
         file = Path(__file__).resolve()
         root = file.parent
-        # Save securely into the 'results' folder to avoid cluttering the root
+        
+        # State file
         memory_file = root / 'results' / f"memory_participant_{self.participant}.json"
         memory_file.parent.mkdir(parents=True, exist_ok=True)
         memory_file_path = str(memory_file)
+
+        # Conversations log file
+        log_file = root / 'results' / f"interaction_log_participant_{self.participant}.jsonl"
+        self.log_file_path = str(log_file)
 
         if os.path.exists(memory_file_path):
             with open(memory_file_path, "r") as f:
@@ -547,8 +552,8 @@ class TaskController(AutoAssign):
                             "ai_response": data.get("ai_response", "")
                         }
                         
-                        self.memory.setdefault("command_history", []).append(entry)
-                        self.save_memory()
+                        with open(self.log_file_path, "a", encoding="utf-8") as f:
+                            f.write(json.dumps(entry) + "\n")
 
                     # 9. Update user preferences regarding speech speed and verbosity
                     elif instruction == "update_preferences":
