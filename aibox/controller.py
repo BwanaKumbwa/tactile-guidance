@@ -384,7 +384,12 @@ class TaskController(AutoAssign):
         self.save_memory = save_memory
 
         if self.shared_state is not None:
-            self.shared_state.set_preferences(self.memory.get("preferences", {"speech_speed": "normal", "verbosity": "normal"}))
+            prefs = self.memory.setdefault("preferences", {})
+            prefs.setdefault("speech_speed", "normal")
+            prefs.setdefault("verbosity", "normal")
+            prefs.setdefault("battery_saver", False) # Default is OFF
+            
+            self.shared_state.set_preferences(prefs)
             self.shared_state.set_target_list_state(self.memory.get("target_list", []), self.memory.get("list_mode", "ordered"))
 
         # Initialize vars for tracking
@@ -565,9 +570,12 @@ class TaskController(AutoAssign):
                     # 9. Update user preferences regarding speech speed and verbosity
                     elif instruction == "update_preferences":
                         data = json.loads(value)
-                        prefs = self.memory.setdefault("preferences", {"speech_speed": "normal", "verbosity": "normal"})
+                        prefs = self.memory.setdefault("preferences", {})
+                        
                         if "speech_speed" in data: prefs["speech_speed"] = data["speech_speed"]
                         if "verbosity" in data: prefs["verbosity"] = data["verbosity"]
+                        if "battery_saver" in data: prefs["battery_saver"] = data["battery_saver"]
+                        
                         self.save_memory()
                         if self.shared_state is not None:
                             self.shared_state.set_preferences(prefs)

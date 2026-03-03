@@ -36,15 +36,17 @@ def clear_target_list() -> str:
     return "The target list has been wiped clean and navigation has stopped."
 
 @mcp.tool()
-def update_user_preferences(speech_speed: str = None, verbosity: str = None) -> str:
+def update_user_preferences(speech_speed: str = None, verbosity: str = None, battery_saver: bool = None) -> str:
     """
-    Call this when the user asks you to talk faster/slower, or give shorter/longer answers.
-    Allowed speech_speed values: "slow", "normal", "fast".
-    Allowed verbosity values: "low", "normal", "high".
+    Call this when the user asks to change settings, talk faster/slower, or turn battery saver on/off.
+    Allowed speech_speed: "slow", "normal", "fast".
+    Allowed verbosity: "low", "normal", "high".
+    battery_saver: True (turns on dynamic FPS to save battery), False (always high FPS).
     """
     data = {}
     if speech_speed: data["speech_speed"] = speech_speed.lower()
     if verbosity: data["verbosity"] = verbosity.lower()
+    if battery_saver is not None: data["battery_saver"] = battery_saver
     
     requests.post(f"{FASTAPI_URL}/command", json={"instruction": "update_preferences", "value": json.dumps(data)})
     return f"Saved preferences to memory: {data}"

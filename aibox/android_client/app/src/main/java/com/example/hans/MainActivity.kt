@@ -69,7 +69,8 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
     // ARCore Session
     private var arSession: Session? = null
     private var hasSetTextureNames = false
-    private var lastFrameTime = 0L // Throttle for AI speed
+    @Volatile private var lastFrameTime = 0L
+    @Volatile private var currentFrameThrottle = 100L
     private val cameraRenderer = CameraRenderer()
 
     // Networking
@@ -231,7 +232,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
 
             // 6. Network AI Logic
             val currentTime = System.currentTimeMillis()
-            if (currentTime - lastFrameTime > 100) {
+            if (currentTime - lastFrameTime > currentFrameThrottle) {
                 lastFrameTime = currentTime
                 processArFrame(frame)
             }
@@ -432,7 +433,18 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                             braceletManager.writeRawCommand(commandBytes)
                             beltManager.writeRawCommand(commandBytes)
                         }
+                        if (jsonObj.has("system_command")) {
+                            val cmd = jsonObj.getString("system_command")
+                            if (cmd == "idle_mode") {
+                                currentFrameThrottle = 1000L // Drop to 1 Frame Per Second
+                                runOnUiThread { tvStatus.text = "Status: Idle (Battery Saver)" }
+                            } else if (cmd == "active_mode") {
+                                currentFrameThrottle = 100L  // Resume 10 Frames Per Second
+                                runOnUiThread { tvStatus.text = "Status: Active Tracking" }
+                            }
+                        }
                     }
+
                 } catch (e: Exception) {
                     // Ignore parse errors
                 }

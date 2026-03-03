@@ -227,21 +227,42 @@ async def video_endpoint(websocket: WebSocket):
                     return obj.tolist()
                 return super(NumpyEncoder, self).default(obj)
 
+        previous_mode = None
+
         try:
             while True:
+                # Battery saver logic
+                prefs = shared_state.get_preferences()
+                is_battery_saver_on = prefs.get("battery_saver", False)
+                
+                if not is_battery_saver_on:
+                    # If setting is OFF, phone always runs at maximum framerate
+                    desired_mode = "active_mode"
+                else:
+                    # If setting is ON, check if we actually need high framerate right now
+                    current_target = shared_state.get_target()
+                    list_state = shared_state.get_target_list_state()
+                    needs_high_fps = (current_target != "none") or (len(list_state["targets"]) > 0)
+                    desired_mode = "active_mode" if needs_high_fps else "idle_mode"
+                
+                # Send the command if the state needs to change
+                if desired_mode != previous_mode:
+                    try:
+                        msg = json.dumps({"system_command": desired_mode})
+                        await websocket.send_text(msg)
+                        previous_mode = desired_mode
+                        
+                        # Just a nice console print so you can see it working
+                        status_text = "Idle (1 FPS)" if desired_mode == "idle_mode" else "Active (High FPS)"
+                        print(f"\n⚡ Phone Camera switched to: {status_text}")
+                    except Exception:
+                        pass
+
+                # Queue sender logic
                 if not result_queue.empty():
                     item = result_queue.get()
-                    
-                    # 1. Protect against raw images
-                    # If an image frame somehow gets in the queue, skip it
-                    # (Sending a raw image as a JSON list crashes the phone)
-                    if isinstance(item, np.ndarray):
-                        continue 
-                    
-                    # 2. Serialize safely using the Custom Encoder
+                    if isinstance(item, np.ndarray): continue 
                     json_str = json.dumps(item, cls=NumpyEncoder)
-                    
-                    # 3. Send to Android
                     await websocket.send_text(json_str)
                     
                 await asyncio.sleep(0.01) # Yield to event loop
@@ -313,29 +334,48 @@ async def process_command(req: CommandRequest):
         return {"answer": "The AI is currently booting up, please wait."}
 
     try:
+        # Get preferences
         prefs = shared_state.get_preferences()
-        verbosity_hint = f"\n[System: User preference is {prefs['verbosity']} verbosity.]"
+        current_verb = prefs.get('verbosity', 'normal')
+
+        system_hint = (
+            f"\n[System: Current settings -> Verbosity: {current_verb}. "
+            "If the user asks to change speaking speed, append [SPEED:SLOW], [SPEED:NORMAL], or [SPEED:FAST]. "
+            "If the user asks to change verbosity, append [VERBOSITY:LOW], [VERBOSITY:NORMAL], or [VERBOSITY:HIGH].]"
+        )
 
         # LLM processing
         answer = await brain.process_query(
             mcp_session_global, 
-            req.text + verbosity_hint, 
+            req.text + system_hint, 
             openai_tools_global
         )
     
         speed_match = re.search(r'\[SPEED:(SLOW|NORMAL|FAST)\]', answer, re.IGNORECASE)
+        verb_match = re.search(r'\[VERBOSITY:(LOW|NORMAL|HIGH)\]', answer, re.IGNORECASE)
         
+        pref_updates = {}
         if speed_match:
-            # If speed has changed, save it to memory immediately
-            new_speed = speed_match.group(1).lower()
-            prefs["speech_speed"] = new_speed
-            shared_state.set_preferences(prefs)
+            pref_updates["speech_speed"] = speed_match.group(1).lower()
+            
+        if verb_match:
+            pref_updates["verbosity"] = verb_match.group(1).lower()
+            # Strip the tag from the text so the Android TTS doesn't read it out loud!
+            answer = re.sub(r'\[VERBOSITY:(LOW|NORMAL|HIGH)\]', '', answer, flags=re.IGNORECASE).strip()
+            
+        # Save preferences
+        if pref_updates:
+            prefs.update(pref_updates) # Update local dict
+            shared_state.set_preferences(prefs) # Update RAM
+            
+            # Send to controller.py to write to memory.json
             mcp_queue.put({
                 "instruction": "update_preferences", 
-                "value": json.dumps({"speech_speed": new_speed})
+                "value": json.dumps(pref_updates)
             })
-        else:
-            # Automatically apply the saved preference
+
+        # Android needs the speed tag to adjust the TTS voice.
+        if not speed_match:
             current_speed = prefs.get('speech_speed', 'normal').upper()
             answer += f" [SPEED:{current_speed}]"
 
