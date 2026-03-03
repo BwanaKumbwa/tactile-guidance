@@ -42,6 +42,7 @@ class SharedState:
         self._preferences = {"speech_speed": "normal", "verbosity": "normal"}
         self._target_list = []
         self._list_mode = "ordered"
+        self._memory_existed = False
 
     def set_target(self, target: str):
         with self._lock: self._current_target = target
@@ -73,6 +74,10 @@ class SharedState:
     def get_target_list_state(self) -> dict:
         with self._lock:
             return {"targets": list(self._target_list), "mode": self._list_mode}
+    def set_memory_existed(self, existed: bool):
+        with self._lock: self._memory_existed = existed
+    def get_memory_existed(self) -> bool:
+        with self._lock: return self._memory_existed
 
 shared_state = SharedState()
 
@@ -215,6 +220,16 @@ def set_verbosity(req: VerbosityRequest):
 async def video_endpoint(websocket: WebSocket):
     await websocket.accept()
     print("✅ Phone Connected")
+
+    await asyncio.sleep(1.0)
+
+    prefs = shared_state.get_preferences()
+    if prefs.get("play_welcome_message", True):
+        welcome_text = "Welcome back." if shared_state.get_memory_existed() else "Welcome."
+        try:
+            await websocket.send_text(json.dumps({"tts_command": welcome_text}))
+        except Exception:
+            pass # In case the phone disconnects instantly
     
     async def sender_task():
         class NumpyEncoder(json.JSONEncoder):
@@ -275,7 +290,7 @@ async def video_endpoint(websocket: WebSocket):
         while True:
             data = await websocket.receive_bytes() 
             
-            # --- BINARY UNPACKING ---
+            # Binary Unpacking
             # Extract RGB Image
             rgb_len = int.from_bytes(data[0:4], byteorder='big')
             rgb_bytes = data[4 : 4+rgb_len]
@@ -340,6 +355,9 @@ async def process_command(req: CommandRequest):
 
         system_hint = (
             f"\n[System: Current settings -> Verbosity: {current_verb}. "
+            "CRITICAL INSTRUCTION: You are 'Hans', a spatial navigation assistant for a visually impaired user. "
+            "If the user asks a question completely unrelated to your camera feed, navigation, the physical environment, or your settings, "
+            "you MUST politely inform them that this is outside your scope as a spatial assistant. Do not answer general knowledge questions. "
             "If the user asks to change speaking speed, append [SPEED:SLOW], [SPEED:NORMAL], or [SPEED:FAST]. "
             "If the user asks to change verbosity, append [VERBOSITY:LOW], [VERBOSITY:NORMAL], or [VERBOSITY:HIGH].]"
         )
