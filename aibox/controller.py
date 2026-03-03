@@ -364,10 +364,14 @@ class TaskController(AutoAssign):
         if os.path.exists(memory_file_path):
             with open(memory_file_path, "r") as f:
                 self.memory = json.load(f)
+            if self.shared_state is not None:
+                self.shared_state.set_memory_existed(True)
             # Restore saved calibrations
             self.participant_vibration_intensities = self.memory.get("calibration", self.participant_vibration_intensities)
             print(f"[System] Memory loaded successfully from {memory_file_path}.")
         else:
+            if self.shared_state is not None:
+                self.shared_state.set_memory_existed(False)
             self.memory = {
                 "target_list": [],
                 "list_mode": "ordered", # ordered, unordered
@@ -387,7 +391,8 @@ class TaskController(AutoAssign):
             prefs = self.memory.setdefault("preferences", {})
             prefs.setdefault("speech_speed", "normal")
             prefs.setdefault("verbosity", "normal")
-            prefs.setdefault("battery_saver", False) # Default is OFF
+            prefs.setdefault("battery_saver", False)
+            prefs.setdefault("play_welcome_message", True)
             
             self.shared_state.set_preferences(prefs)
             self.shared_state.set_target_list_state(self.memory.get("target_list", []), self.memory.get("list_mode", "ordered"))
@@ -575,6 +580,7 @@ class TaskController(AutoAssign):
                         if "speech_speed" in data: prefs["speech_speed"] = data["speech_speed"]
                         if "verbosity" in data: prefs["verbosity"] = data["verbosity"]
                         if "battery_saver" in data: prefs["battery_saver"] = data["battery_saver"]
+                        if "play_welcome_message" in data: prefs["play_welcome_message"] = data["play_welcome_message"]
                         
                         self.save_memory()
                         if self.shared_state is not None:
