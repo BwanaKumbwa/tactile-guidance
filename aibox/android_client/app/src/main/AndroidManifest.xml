@@ -27,14 +27,19 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.AppCompat.NoActionBar"
+        android:theme="@style/Theme.Hans"
         android:usesCleartextTraffic="true"
         tools:targetApi="31">
 
-        <!-- ❌ WRONG PLACE: Do NOT put permissions here -->
-
+        <activity android:name=".MainActivity" />
+        <activity android:name=".BluetoothActivity" />
+        <activity android:name=".BluetoothConnectedActivity" />
+        <activity android:name=".BluetoothNotConnectedActivity" />
+        <activity android:name=".IntensityActivity" />
+        <activity android:name=".PatternActivity" />
+        <activity android:name=".SettingsActivity" />
         <activity
-            android:name=".MainActivity"
+            android:name=".HomescreenActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

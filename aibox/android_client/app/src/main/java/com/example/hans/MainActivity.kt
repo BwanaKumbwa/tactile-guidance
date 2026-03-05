@@ -1,6 +1,7 @@
 package com.example.hans
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -17,6 +18,7 @@ import android.speech.tts.TextToSpeech
 import android.util.Base64
 import android.util.Log
 import android.widget.Button
+import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -43,13 +45,13 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     // =================================================================
     // CONFIGURATION
     // =================================================================
-    private val SERVER_IP = "192.168.1.16" // UPDATE
+    private val SERVER_IP = "192.168.0.103" // UPDATE
     private val WEBSOCKET_URL = "ws://$SERVER_IP:8000/ws/video"
     private val COMMAND_URL = "http://$SERVER_IP:8000/api/command"
     private val WAKE_WORD = "hans"
 
     // BLUETOOTH MAC ADDRESSES
-    private val MAC_BRACELET = "00:A0:50:93:8A:AA" // UPDATE
+    private val MAC_BRACELET = "00:A0:50:65:73:20"// update
     private val MAC_BELT     = "00:A0:50:DA:2B:54" // UPDATE
     // =================================================================
 
@@ -91,6 +93,22 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         tvStatus = findViewById(R.id.tvStatus)
         tvAiResponse = findViewById(R.id.tvAiResponse)
         btnToggleListen = findViewById(R.id.btnToggleListen)
+
+        // NAVIGATION ICONS (PUT HERE)
+        val homeIcon = findViewById<ImageView>(R.id.Home)
+        homeIcon.setOnClickListener {
+            startActivity(Intent(this, BluetoothActivity::class.java))
+        }
+
+        val settingIcon = findViewById<ImageView>(R.id.Setting)
+        settingIcon.setOnClickListener {
+            startActivity(Intent(this, SettingsActivity::class.java))
+        }
+
+        val cameraIcon = findViewById<ImageView>(R.id.Camera_command)
+        cameraIcon.setOnClickListener {
+            Toast.makeText(this, "Camera already active", Toast.LENGTH_SHORT).show()
+        }
 
         // 2. Initialize BLE Managers
         braceletManager = BleManager(this)
