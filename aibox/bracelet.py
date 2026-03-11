@@ -33,6 +33,7 @@ def connect_belt():
     else:
         # Change belt mode to APP mode
         belt_controller.set_belt_mode(BeltMode.APP_MODE)
+        # belt_controller.set_inaccurate_orientation_signal_state(False, True)
         return True, belt_controller
 
 

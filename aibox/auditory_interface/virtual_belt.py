@@ -22,6 +22,9 @@ class VirtualBeltController:
         # Orientation is usually 0-360 degrees.
         orientation_int = int(orientation) % 360
         
+        print(f"🔔 Vibrating: Channel={channel_index}, Pattern={pattern}, "
+              f"Intensity={intensity}, Orientation={orientation_int}, Type={orientation_type}")
+        
         # The exact 18-byte packet structure from pybelt
         command_bytes = bytes([
             channel_index & 0xFF,

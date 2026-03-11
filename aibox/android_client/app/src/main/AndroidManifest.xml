@@ -38,6 +38,8 @@
         <activity android:name=".IntensityActivity" />
         <activity android:name=".PatternActivity" />
         <activity android:name=".SettingsActivity" />
+        <activity android:name=".FullIntensityActivity" />
+
         <activity
             android:name=".HomescreenActivity"
             android:exported="true">

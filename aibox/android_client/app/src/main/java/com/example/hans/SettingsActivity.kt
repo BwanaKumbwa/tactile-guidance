@@ -33,17 +33,17 @@ class SettingsActivity : AppCompatActivity() {
         // Find the button
         val intensityButton = findViewById<Button>(R.id.button_intensity)
 
-        // When clicked → go to BluetoothActivity
+        // When clicked → go to IntensityActivity
         intensityButton.setOnClickListener {
             startActivity(
-                Intent(this, IntensityActivity::class.java)
+                Intent(this, FullIntensityActivity::class.java)
             )
         }
 
         // Find the button
         val patternButton = findViewById<Button>(R.id.button_pattern)
 
-        // When clicked → go to BluetoothActivity
+        // When clicked → go to PatternActivity
         patternButton.setOnClickListener {
             startActivity(
                 Intent(this, PatternActivity::class.java)
