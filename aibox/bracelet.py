@@ -38,7 +38,7 @@ def connect_belt():
 
 class BraceletController:
 
-    def __init__(self, vibration_intensities = {'bottom': 50, 'top': 50, 'left': 50, 'right': 50}, navigation_type = 0):
+    def __init__(self, vibration_intensities = {'bottom': 50, 'top': 50, 'left': 50, 'right': 50}):
         self.vibration_intensities = vibration_intensities
         self.searching = False
         self.prev_hand = None
@@ -50,28 +50,10 @@ class BraceletController:
         self.is_inside = False
         self.is_touched = False
         self.obstacle_target = None
-        self.corners = None
-        self.roi_coords = None
         self.roi_min_y = -1
         self.navigation_time = 'NA'
         self.freezing_time = 'NA'
         self.grasping_time = 'NA'
-        self.target_confidence_list = []
-        self.target_detections_list = []
-        self.target_class_list = []
-        self.target_class_track_ids = []
-        self.target_object_track_ids = []
-        self.target_position = []
-        self.navigation_type = navigation_type
-        self.was_guiding = False
-        self.prev_right_intensity = 0
-        self.prev_left_intensity = 0
-        self.prev_top_intensity = 0
-        self.prev_bot_intensity = 0
-        self.mock_navigate = False
-        self.hand_position = []
-        self.hand_confidence_list = []
-        self.last_vib_update_time = 0
 
 
     def choose_detection(self, bboxes, previous_bbox=None, hand=False, w=1920, h=1080):
@@ -178,68 +160,59 @@ class BraceletController:
         max_bottom_intensity, max_top_intensity, max_left_intensity, max_right_intensity = vibration_intensities["bottom"], vibration_intensities["top"], vibration_intensities["left"], vibration_intensities["right"]
 
         # Calculate motor intensities based on the angle
-        if self.navigation_type == 0:
-            # Default (horizontal -> vertical)
-            if 0 <= angle < 80 or 280 <= angle < 360:
-                right_intensity = max_right_intensity
-            elif 80 <= angle < 100:
-                top_intensity = max_top_intensity
-            elif 100 <= angle < 260:
-                left_intensity = max_left_intensity
-            elif 260 <= angle < 280:
-                bottom_intensity =  max_bottom_intensity
-        elif self.navigation_type == 1:
-            # Octants (simultaneous vibrations)
-            if 0 <= angle < 45:
-                right_intensity = max_right_intensity
-                top_intensity = (angle - 0) / 45 * max_top_intensity
-            elif angle == 45:
-                right_intensity = max_right_intensity
-                top_intensity = max_top_intensity
-            elif 45 < angle < 90:
-                right_intensity = (90 - angle) / 45 * max_right_intensity
-                top_intensity = max_top_intensity
-            elif 90 <= angle < 135:
-                top_intensity = max_top_intensity
-                left_intensity = (angle - 90) / 45 * max_left_intensity
-            elif angle == 135:
-                top_intensity = max_top_intensity
-                left_intensity = max_left_intensity
-            elif 135 < angle < 180:
-                top_intensity = (180 - angle) / 45 * max_top_intensity
-                left_intensity = max_left_intensity
-            elif 180 <= angle < 225:
-                left_intensity = max_left_intensity
-                bottom_intensity = (angle - 180) / 45 * max_bottom_intensity
-            elif angle == 225:
-                left_intensity = max_left_intensity
-                bottom_intensity = max_bottom_intensity
-            elif 225 < angle < 270:
-                left_intensity = (270 - angle) / 45 * max_left_intensity
-                bottom_intensity = max_bottom_intensity
-            elif 270 <= angle < 315:
-                bottom_intensity = max_bottom_intensity
-                right_intensity = (angle - 270) / 45 * max_right_intensity
-            elif angle == 315:
-                bottom_intensity = max_bottom_intensity
-                right_intensity = max_right_intensity
-            elif 315 < angle <= 360:
-                bottom_intensity = (360 - angle) / 45 * max_bottom_intensity
-                right_intensity = max_right_intensity
-        elif self.navigation_type == 2:
-            # Quadrants (simultaneous vibrations)
-            if 0 <= angle < 90:
-                right_intensity = (90 - angle) / 90 * max_right_intensity
-                top_intensity = angle / 90 * max_top_intensity
-            elif 90 <= angle < 180:
-                top_intensity = (180 - angle) / 90 * max_top_intensity
-                left_intensity = (angle - 90) / 90 * max_left_intensity
-            elif 180 <= angle < 270:
-                left_intensity = (270 - angle) / 90 * max_left_intensity
-                bottom_intensity = (angle - 180) / 90 * max_bottom_intensity
-            elif 270 <= angle < 360:
-                bottom_intensity = (360 - angle) / 90 * max_bottom_intensity
-                right_intensity = (angle - 270) / 90 * max_right_intensity
+        # Octants
+        if 0 <= angle < 45:
+            right_intensity = max_right_intensity
+            top_intensity = (angle - 0) / 45 * max_top_intensity
+        elif angle == 45:
+            right_intensity = max_right_intensity
+            top_intensity = max_top_intensity
+        elif 45 < angle < 90:
+            right_intensity = (90 - angle) / 45 * max_right_intensity
+            top_intensity = max_top_intensity
+        elif 90 <= angle < 135:
+            top_intensity = max_top_intensity
+            left_intensity = (angle - 90) / 45 * max_left_intensity
+        elif angle == 135:
+            top_intensity = max_top_intensity
+            left_intensity = max_left_intensity
+        elif 135 < angle < 180:
+            top_intensity = (180 - angle) / 45 * max_top_intensity
+            left_intensity = max_left_intensity
+        elif 180 <= angle < 225:
+            left_intensity = max_left_intensity
+            bottom_intensity = (angle - 180) / 45 * max_bottom_intensity
+        elif angle == 225:
+            left_intensity = max_left_intensity
+            bottom_intensity = max_bottom_intensity
+        elif 225 < angle < 270:
+            left_intensity = (270 - angle) / 45 * max_left_intensity
+            bottom_intensity = max_bottom_intensity
+        elif 270 <= angle < 315:
+            bottom_intensity = max_bottom_intensity
+            right_intensity = (angle - 270) / 45 * max_right_intensity
+        elif angle == 315:
+            bottom_intensity = max_bottom_intensity
+            right_intensity = max_right_intensity
+        elif 315 < angle <= 360:
+            bottom_intensity = (360 - angle) / 45 * max_bottom_intensity
+            right_intensity = max_right_intensity
+
+        '''
+        # Quadrants
+        if 0 <= angle < 90:
+            right_intensity = (90 - angle) / 90 * max_right_intensity
+            top_intensity = angle / 90 * max_top_intensity
+        elif 90 <= angle < 180:
+            top_intensity = (180 - angle) / 90 * max_top_intensity
+            left_intensity = (angle - 90) / 90 * max_left_intensity
+        elif 180 <= angle < 270:
+            left_intensity = (270 - angle) / 90 * max_left_intensity
+            bottom_intensity = (angle - 180) / 90 * max_bottom_intensity
+        elif 270 <= angle < 360:
+            bottom_intensity = (360 - angle) / 90 * max_bottom_intensity
+            right_intensity = (angle - 270) / 90 * max_right_intensity
+        '''
 
         return int(right_intensity), int(left_intensity), int(top_intensity), int(bottom_intensity), 50
 
@@ -365,48 +338,11 @@ class BraceletController:
         target = self.choose_detection(bboxes_objects, self.prev_target, hand=False)
         self.prev_target = target
 
-        if self.navigation_time != 'NA':
-            if target is not None:
-                self.target_detections_list.append(1)
-                self.target_confidence_list.append(target[6])
-                for target_class_object in bboxes_objects:
-                    self.target_class_list.append(int(target_class_object[4]))
-                self.target_class_track_ids.append(self.target_class_list)
-                self.target_class_list = []
-                self.target_object_track_ids.append(int(target[4]))
-                self.target_position.append([target[0], target[1]])
-                
-            else:
-                self.target_detections_list.append(0)
-                self.target_confidence_list.append(0)
-                self.target_class_track_ids.append([])
-                self.target_object_track_ids.append('NA')
-                self.target_position.append([0, 0])
-
-            if hand is not None:
-                self.hand_position.append([hand[0], hand[1]])
-                self.hand_confidence_list.append(hand[6])
-            else:
-                self.hand_position.append([0, 0])
-                self.hand_confidence_list.append('NA')
-
         if hand is not None and target is not None:
 
             # Save navigation start timestamp
-            if self.navigation_time == 'NA':
+            if self.navigation_time is None:
                 self.navigation_time = time.time()
-                self.target_detections_list.append(1)
-                self.target_confidence_list.append(target[6])
-                for target_class_object in bboxes_objects:
-                    self.target_class_list.append(int(target_class_object[4]))
-                self.target_class_track_ids.append(self.target_class_list)
-                self.target_class_list = []
-                self.target_object_track_ids.append(int(target[4]))
-                self.target_position.append([target[0], target[1]])
-                self.hand_position.append([hand[0], hand[1]])
-                self.hand_confidence_list.append(hand[6])
-
-
             # Get varying vibration intensities depending on angle from hand to target
             # Navigation without depth map
             if depth_img is None:
@@ -450,7 +386,7 @@ class BraceletController:
                     self.obstacle_target = None
                     right_int, left_int, top_int, bot_int, depth_int = self.get_intensity(hand, target, vibration_intensities)
                 else:
-                    self.obstacle_target, self.corners, self.roi_coords, self.roi_min_y = find_obstacle_target_point(hand, target, obstacles_mask)
+                    self.obstacle_target, self.roi_min_y = find_obstacle_target_point(hand, target, obstacles_mask)
                     if self.roi_min_y > 5:
                         right_int, left_int, top_int, bot_int, depth_int = self.get_intensity(hand, self.obstacle_target, vibration_intensities, depth_img)
                     else:
@@ -484,19 +420,44 @@ class BraceletController:
             if not self.frozen:
                 overlapping, self.frozen_x, self.frozen_y, self.frozen_w, self.frozen_h, self.frozen = self.check_overlap(hand, target, self.frozen)
             elif self.frozen:
-                if self.freezing_time == 'NA':
-                    self.freezing_time = time.time()
+                self.freezing_time = time.time()
                 overlapping, self.frozen_x, self.frozen_y, self.frozen_w, self.frozen_h, self.frozen = self.check_overlap(hand, frozenBB, self.frozen)
                 frozen_target[:4] = frozenBB
+
+            # Move backwards if there is obstacle between hand and target (only used with depth map)
+            '''
+            if depth_int == -1:
+                print('Move back!')
+                self.searching = True
+
+                if belt_controller and self.vibrate:
+                    belt_controller.stop_vibration()
+                    belt_controller.send_pulse_command(
+                        channel_index=1,
+                        orientation_type=BeltOrientationType.BINARY_MASK,
+                        orientation=0b101000,
+                        intensity=50,
+                        on_duration_ms=150,
+                        pulse_period=500,
+                        pulse_iterations=5,
+                        series_period=5000,
+                        series_iterations=1,
+                        timer_option=BeltVibrationTimerOption.RESET_TIMER,
+                        exclusive_channel=False,
+                        clear_other_channels=False
+                    )
+
+                print('MOVE BACK')
+                return overlapping, frozen_target
+            '''
 
         elif hand is None:
             frozen_target = None
             self.frozen = False
             self.is_inside = False
             self.is_touched = False
-            #if belt_controller and self.vibrate:
-            #    belt_controller.stop_vibration()
-
+            if belt_controller and self.vibrate:
+                belt_controller.stop_vibration()
 
         # 1. Grasping
         if overlapping:
@@ -521,70 +482,18 @@ class BraceletController:
                 self.vibrate = False
                 self.prev_target = None
                 frozen_target = None
-                self.was_guiding = False
-
-            print("GRASP! Success? (Y/N)")
+            print("G R A S P !")
             return overlapping, frozen_target
 
         # 2. Guidance
         if hand is not None and target is not None:
-            self.searching = True
-            self.timer = 0
-            self.was_guiding = True
-            
-            # Only send BLE packets if 200ms have passed (5 FPS)
-            current_time = time.time()
-            if current_time - self.last_vib_update_time > 0.2:
-                self.last_vib_update_time = current_time
-                
-                # Check if intensities changed enough to bother sending
-                if abs(right_int - self.prev_right_intensity) > 5 or \
-                   abs(left_int - self.prev_left_intensity) > 5 or \
-                   abs(top_int - self.prev_top_intensity) > 5 or \
-                   abs(bot_int - self.prev_bot_intensity) > 5:
-
-                    self.prev_right_intensity = right_int
-                    self.prev_left_intensity = left_int
-                    self.prev_top_intensity = top_int
-                    self.prev_bot_intensity = bot_int
-
-                    if belt_controller and self.vibrate:
-                        belt_controller.send_vibration_command(
-                            channel_index=0, pattern=1, intensity=right_int,
-                            orientation_type=2, orientation=120, pattern_iterations=None,
-                            pattern_period=100, pattern_start_time=0,
-                            exclusive_channel=False, clear_other_channels=False
-                        )
-                        belt_controller.send_vibration_command(
-                            channel_index=1, pattern=1, intensity=left_int,
-                            orientation_type=2, orientation=45, pattern_iterations=None,
-                            pattern_period=100, pattern_start_time=0,
-                            exclusive_channel=False, clear_other_channels=False)
-                        belt_controller.send_vibration_command(
-                            channel_index=0, pattern=1, intensity=top_int,
-                            orientation_type=2, orientation=90, pattern_iterations=None,
-                            pattern_period=100, pattern_start_time=0,
-                            exclusive_channel=False, clear_other_channels=False
-                        )
-                        belt_controller.send_vibration_command(
-                            channel_index=1, pattern=1, intensity=bot_int,
-                            orientation_type=2, orientation=60, pattern_iterations=None,
-                            pattern_period=100, pattern_start_time=0,
-                            exclusive_channel=False, clear_other_channels=False)
-
-            if self.mock_navigate:
-                print(f'Normal Guidance; right: {right_int}, left: {left_int}, top: {top_int}, bot: {bot_int}')
-            return overlapping, frozen_target
-
-        # 3. Guidance for several frames if target or hand are lost
-        if self.was_guiding:
             self.searching = True
 
             if belt_controller and self.vibrate:
                 belt_controller.send_vibration_command(
                     channel_index=0,
                     pattern=BeltVibrationPattern.CONTINUOUS,
-                    intensity=self.prev_right_intensity,
+                    intensity=right_int,
                     orientation_type=BeltOrientationType.ANGLE,
                     orientation=120,
                     pattern_iterations=None,
@@ -596,7 +505,7 @@ class BraceletController:
                 belt_controller.send_vibration_command(
                     channel_index=1,
                     pattern=BeltVibrationPattern.CONTINUOUS,
-                    intensity=self.prev_left_intensity,
+                    intensity=left_int,
                     orientation_type=BeltOrientationType.ANGLE,
                     orientation=45,
                     pattern_iterations=None,
@@ -608,7 +517,7 @@ class BraceletController:
                 belt_controller.send_vibration_command(
                     channel_index=2,
                     pattern=BeltVibrationPattern.CONTINUOUS,
-                    intensity=self.prev_top_intensity,
+                    intensity=top_int,
                     orientation_type=BeltOrientationType.ANGLE,
                     orientation=90,
                     pattern_iterations=None,
@@ -620,7 +529,7 @@ class BraceletController:
                 belt_controller.send_vibration_command(
                     channel_index=3,
                     pattern=BeltVibrationPattern.CONTINUOUS,
-                    intensity=self.prev_bot_intensity,
+                    intensity=bot_int,
                     orientation_type=BeltOrientationType.ANGLE,
                     orientation=60,
                     pattern_iterations=None,
@@ -629,20 +538,9 @@ class BraceletController:
                     exclusive_channel=False,
                     clear_other_channels=False
                 )
+            return overlapping, frozen_target
 
-            self.timer += 1
-            if self.timer >= 40: # roughly 2 seconds with experimenter laptop in grasping task with cable (covers more FOV for higher chance of re-detection)
-                self.searching = True
-                self.was_guiding = False
-                self.timer = 0
-                if belt_controller and self.vibrate:
-                    belt_controller.stop_vibration()
-
-            if self.mock_navigate:
-                print(f'Smoothened Guidance; right: {self.prev_right_intensity}, left: {self.prev_left_intensity}, top: {self.prev_top_intensity}, bot: {self.prev_bot_intensity}')
-            return overlapping, None
-        
-        # 4. Target is located and hand can be moved into the frame
+        # 3. Target is located and hand can be moved into the frame
         if target is not None:
             self.timer += 1
             if belt_controller and self.vibrate and self.searching:
@@ -666,19 +564,12 @@ class BraceletController:
             if self.timer >= 50:
                 self.searching = True
                 self.timer = 0
-
-            if self.mock_navigate:
-                print("4. Target located")
             return overlapping, target
 
-        # 5. Target is not in the frame yet.
+        # 4. Target is not in the frame yet.
         else:
             self.timer = 0
             self.searching = True
             if belt_controller and self.vibrate:
                 belt_controller.stop_vibration()
-
-            if self.mock_navigate:
-                #print("5. Target not located")
-                pass
             return overlapping, None
