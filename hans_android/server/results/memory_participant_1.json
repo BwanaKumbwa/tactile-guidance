@@ -1,0 +1,61 @@
+{
+    "target_list": [
+        "cup",
+        "spotted plant"
+    ],
+    "list_mode": "unordered",
+    "grasped_objects": [
+        "cup"
+    ],
+    "calibration": {
+        "bottom": 30,
+        "top": 30,
+        "left": 30,
+        "right": 30
+    },
+    "preferences": {
+        "speech_speed": "normal",
+        "verbosity": "low",
+        "battery_saver": false,
+        "play_welcome_message": true
+    },
+    "command_history": [],
+    "world_map": {
+        "myright": {
+            "location": "Bottom Right, 0.43m",
+            "last_seen": "01:17:43 AM"
+        },
+        "myleft": {
+            "location": "Bottom Right, 0.31m",
+            "last_seen": "01:17:44 AM"
+        },
+        "potted plant": {
+            "location": "Middle Center, 2.54m",
+            "last_seen": "12:50:40 AM"
+        },
+        "clock": {
+            "location": "Top Center, 0.48m",
+            "last_seen": "12:50:50 AM"
+        },
+        "cup": {
+            "location": "Middle Center, 0.47m",
+            "last_seen": "01:17:59 AM"
+        },
+        "bottle": {
+            "location": "Top Center, 0.50m",
+            "last_seen": "12:50:42 AM"
+        },
+        "apple": {
+            "location": "Top Center, 0.49m",
+            "last_seen": "12:50:50 AM"
+        },
+        "bowl": {
+            "location": "Middle Right, 0.45m",
+            "last_seen": "09:31:33 AM"
+        },
+        "fork": {
+            "location": "Top Center, 0.48m",
+            "last_seen": "12:50:53 AM"
+        }
+    }
+}

@@ -36,7 +36,38 @@ USER SAYS SOMETHING
 └─→ Other spatial/vision questions?
 └─→ USE: analyze_camera_view() with appropriate instruction
 
-#### Key Rules
+IF user mentions multiple objects/targets in one request:
+→ Use add_targets_to_list()
+→ Include ALL objects mentioned, even if not visible
+→ Use appropriate mode (ordered/unordered based on user phrasing)
+
+Example 1: "Find apple and cup"
+→ add_targets_to_list(["apple", "cup"], "unordered")
+
+Example 2: "First the cup, then the apple"
+→ add_targets_to_list(["cup", "apple"], "ordered")
+
+Example 3: "Add banana to the list"
+→ add_targets_to_list(["banana"], "unordered")
+
+IF user mentions ONE target:
+→ Use set_target_with_fuzzy_match()
+→ This clears any previous targets and sets new one
+
+Example: "Set target to cup"
+→ set_target_with_fuzzy_match("cup")
+
+When visible objects are checked:
+
+Exact match? Use exact name
+Fuzzy match (>75%)? Use matched name with explanation
+No match? Still add to list (user might know something system doesn't)
+Response format:
+cup (visible) = found and visible
+chair (matched from "hair", 89%) = fuzzy matched visible
+apple (not visible) = will search when visible
+
+#### Other Rules
 
 **RULE 1: Simple Object Detection (Priority)**
 
