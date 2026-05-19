@@ -1,11 +1,3 @@
-"""
-bracelet.py — Refactored
-Changes applied:
-  🔴 Removed unreachable code block after early return in get_intensity()
-  🟠 Applied 200 ms BLE throttle to the 'smoothened guidance' (case 3) path
-  🟠 Replaced frame-count timer in case 3 with wall-clock timeout (~2 s)
-"""
-
 import numpy as np
 from pybelt.belt_controller import (
     BeltConnectionState, BeltController, BeltControllerDelegate,
@@ -83,9 +75,7 @@ class BraceletController:
         # Wall-clock timeout for smoothened guidance (replaces frame counter)
         self._smoothed_guidance_start: float = 0.0
 
-    # ------------------------------------------------------------------
-    # Detection chooser
-    # ------------------------------------------------------------------
+    # Detection selector
 
     def choose_detection(self, bboxes, previous_bbox=None, hand=False, w=1920, h=1080):
         track_id_weight   = 1000
@@ -113,9 +103,7 @@ class BraceletController:
             return None
         return bboxes[np.argmax(candidates)] if candidates else (previous_bbox if (self.is_inside or self.is_touched) and not hand else None)
 
-    # ------------------------------------------------------------------
-    # Bounding-box helpers
-    # ------------------------------------------------------------------
+    # Bounding box helper functions
 
     def get_bb_bounds(self, BB):
         BB_x, BB_y, BB_w, BB_h = BB[:4]
@@ -123,10 +111,6 @@ class BraceletController:
                 BB_x - BB_w // 2,   # left
                 BB_y - BB_h // 2,   # top
                 BB_y + BB_h // 2)   # bottom
-
-    # ------------------------------------------------------------------
-    # 🔴  get_intensity — unreachable dead code removed
-    # ------------------------------------------------------------------
 
     def get_intensity(self, handBB, targetBB, vibration_intensities, depth_img=None):
         """
@@ -211,9 +195,7 @@ class BraceletController:
         depth_intensity = 50
         return int(right_int), int(left_int), int(top_int), int(bot_int), depth_intensity
 
-    # ------------------------------------------------------------------
-    # Overlap / grasping detection
-    # ------------------------------------------------------------------
+    # Overlap (grasping detection)
 
     def check_overlap(self, handBB, targetBB, frozen=False):
         hand_x,   hand_y,   hand_w,   hand_h   = handBB[:4]
@@ -238,9 +220,7 @@ class BraceletController:
             return inside_center, target_x, target_y, target_w, target_h, frozen
         return False, target_x, target_y, target_w, target_h, False
 
-    # ------------------------------------------------------------------
-    # 🟠  navigate_hand — BLE throttle applied uniformly across all paths
-    # ------------------------------------------------------------------
+    # Hand navigation function
 
     def navigate_hand(self, belt_controller, bboxes, target_cls,
                       hand_clss, depth_img, vibration_intensities=None, metric=False):
@@ -264,7 +244,7 @@ class BraceletController:
         self.prev_hand   = hand
         self.prev_target = target
 
-        # ── Data collection ───────────────────────────────────────────
+        # Data collection
         if self.navigation_time != 'NA':
             if target is not None:
                 self.target_detections_list.append(1)
@@ -288,7 +268,7 @@ class BraceletController:
                 self.hand_position.append([0, 0])
                 self.hand_confidence_list.append('NA')
 
-        # ── Compute intensities ───────────────────────────────────────
+        # Intensitites computation
         right_int = left_int = top_int = bot_int = depth_int = 0
 
         if hand is not None and target is not None:
@@ -349,7 +329,7 @@ class BraceletController:
             self.is_inside  = False
             self.is_touched = False
 
-        # ── 1. Grasping signal ────────────────────────────────────────
+        # 1. Overlap -> send grasping signal
         if overlapping:
             self.grasping_time = time.time()
             self.searching = True
@@ -371,7 +351,7 @@ class BraceletController:
             print("GRASP! Success? (Y/N)")
             return overlapping, frozen_target
 
-        # ── 2. Active guidance (hand + target both visible) ──────────
+        # 2. Active guidance (hand + target both visible)
         if hand is not None and target is not None:
             self.searching    = True
             self.was_guiding  = True
@@ -422,8 +402,7 @@ class BraceletController:
                 print(f'Guidance; R:{right_int} L:{left_int} T:{top_int} B:{bot_int}')
             return overlapping, frozen_target
 
-        # ── 3. Smoothened guidance — target/hand temporarily lost ────
-        #     🟠 Now wall-clock timed AND BLE-throttled (was frame-counted, unthrottled)
+        # 3. Smoothened guidance — target/hand temporarily lost
         if self.was_guiding:
             self.searching = True
 
@@ -463,7 +442,7 @@ class BraceletController:
                       f'T:{self.prev_top_intensity} B:{self.prev_bot_intensity}')
             return overlapping, None
 
-        # ── 4. Target visible, hand not yet in frame ──────────────────
+        # 4. Target visible, hand not yet in frame
         if target is not None:
             if belt_controller and self.vibrate and self.searching:
                 self.searching = False
@@ -481,7 +460,7 @@ class BraceletController:
                 print("4. Target located, hand absent")
             return overlapping, target
 
-        # ── 5. Neither target nor hand visible ────────────────────────
+        # 5. Neither target nor hand visible
         self.searching = True
         if belt_controller and self.vibrate:
             belt_controller.stop_vibration()
@@ -489,10 +468,7 @@ class BraceletController:
             pass
         return overlapping, None
 
-    # ------------------------------------------------------------------
-    # Helper: signal obstacle / retreat
-    # ------------------------------------------------------------------
-
+    # Helper function: signal obstacle / retreat
     def _signal_move_back(self, belt_controller):
         self.searching = True
         if belt_controller and self.vibrate:

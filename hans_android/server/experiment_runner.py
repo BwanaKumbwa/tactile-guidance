@@ -1,25 +1,3 @@
-"""
-experiment_runner.py
-
-Change 1: All experiment-trial concerns extracted from the vision pipeline.
-VisionPipeline knows nothing about trials, participants, or CSV files.
-ExperimentRunner wraps the pipeline and adds:
-  - OpenCV display loop (must run on the main thread)
-  - Trial start/stop state machine (S / Y / N / F / T / C keys)
-  - Per-trial data collection from bracelet_controller
-  - CSV output
-
-Usage (standalone research mode):
-    pipeline = VisionPipeline(cfg, ...)
-    runner   = ExperimentRunner(pipeline, participant=1, condition='grasping',
-                                target_objs=['cup', 'bottle'], manual_entry=False)
-    runner.run()   # blocks until 'C' is pressed or all targets are exhausted
-
-Usage (deployment — server_main.py):
-    pipeline.start()
-    pipeline.wait()   # no ExperimentRunner involved
-"""
-
 from __future__ import annotations
 
 import queue
@@ -36,10 +14,7 @@ import pandas as pd
 from labels import coco_labels
 from vision_pipeline import VisionPipeline, DisplayItem
 
-
-# ═══════════════════════════════════════════════════════════════════════════
 # Trial constants
-# ═══════════════════════════════════════════════════════════════════════════
 
 class _Key:
     TRIAL_SUCCESSFUL   = ord('y')
@@ -57,9 +32,7 @@ class _Key:
     }
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # ExperimentRunner
-# ═══════════════════════════════════════════════════════════════════════════
 
 class ExperimentRunner:
     """
@@ -99,7 +72,7 @@ class ExperimentRunner:
         # Data accumulator
         self._output_data: List[list] = []
 
-    # ── Main entry point (blocking — must be called from the main thread) ─
+    # Main entry point (blocking — must be called from the main thread)
 
     def run(self) -> None:
         """
@@ -153,7 +126,7 @@ class ExperimentRunner:
                 if self._handle_key(key) == 'quit':
                     break
 
-    # ── Key handler ───────────────────────────────────────────────────────
+    # Key handler
 
     def _handle_key(self, key: int) -> Optional[str]:
         self._last_pressed_key = key
@@ -176,7 +149,7 @@ class ExperimentRunner:
 
         return None
 
-    # ── Trial state machine ───────────────────────────────────────────────
+    # Trial state machine
 
     def _start_trial(self) -> None:
         """Resolve target name, tell the pipeline, start timing."""
@@ -236,7 +209,7 @@ class ExperimentRunner:
         self._trial_end_time   = 'NA'
         print('[Experiment] Ready for next trial (press S).')
 
-    # ── Data collection ───────────────────────────────────────────────────
+    # Data collection
 
     def _append_output_row(self) -> None:
         """

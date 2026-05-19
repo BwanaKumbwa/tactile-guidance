@@ -15,7 +15,7 @@ sys.stdout = sys.stderr
 
 mcp = FastMCP("HANS-Controller")
 
-# --- CUSTOM API CONFIGURATION (Matching query_processing.py) ---
+# Custom API configuration (matching query_processing.py)
 API_URL = os.getenv("API_URL")
 API_KEY = os.getenv("API_KEY")
 LLM_MODEL = os.getenv("LLM_MODEL", "openai/gpt-oss-120b")
@@ -50,12 +50,12 @@ def call_custom_vision_api(messages: list, max_tokens: int = 100):
     except Exception as e:
         return f"Error calling Custom API ({LLM_MODEL}): {e}"
 
-# --- Existing Tools (Set Target, Lists, etc.) ---
+# Existing Tools (Set Target, Lists, etc.)
 
 from difflib import SequenceMatcher
 import re
 
-# ========== FUZZY MATCHING FOR SPEECH ERRORS ==========
+# Fuzzy matching for speech errors
 
 @mcp.tool()
 def find_similar_target(target_name: str) -> str:
@@ -195,59 +195,74 @@ def set_target_list(targets: list[str], mode: str) -> str:
 def add_targets_to_list(target_names: list[str], mode: str = "unordered") -> str:
     """
     Add multiple targets to the target list.
-    Handles both visible and non-visible targets.
-    Does fuzzy matching on visible objects, but allows any target name.
+    RESTRICTED: Targets must be from the available COCO object classes.
+    Does fuzzy matching to find the correct class name.
     
     Args:
         target_names: List of target object names (e.g., ["apple", "cup"])
         mode: "ordered" (visit in sequence) or "unordered" (any order)
     
-    Returns: Confirmation with matched/unmatched targets
+    Returns: Confirmation with validated targets or list of available classes
     """
     try:
-        # Get visible objects for fuzzy matching
+        # Get available classes from COCO
         state = requests.get(f"{FASTAPI_URL}/state").json()
+        available_classes = state.get("available_classes", [])  # All COCO classes
         visible_objects = state.get("visible_objects", [])
-        available_names = [obj['name'] for obj in visible_objects]
+        visible_names = [obj['name'] for obj in visible_objects]
         
-        # Process each target
+        if not available_classes:
+            return "Error: No available classes loaded. System may still be initializing."
+        
+        # Process each requested target
         processed_targets = []
-        visibility_status = []
+        validation_status = []
+        rejected_targets = []
         
         for target_name in target_names:
             target_lower = target_name.lower().strip()
             
-            # Check for exact match in visible objects
-            exact_match = next((name for name in available_names if name.lower() == target_lower), None)
+            # 1. Exact match in available classes
+            exact_match = next((cls for cls in available_classes if cls.lower() == target_lower), None)
             
             if exact_match:
-                # Use the exact visible object name
                 processed_targets.append(exact_match)
-                visibility_status.append(f"✓ {exact_match} (visible)")
+                if exact_match in visible_names:
+                    validation_status.append(f"✓ {exact_match} (valid class, currently visible)")
+                else:
+                    validation_status.append(f"✓ {exact_match} (valid class, will search)")
             else:
-                # Try fuzzy matching
+                # 2. Fuzzy match against available classes
                 best_match = None
                 best_score = 0.0
                 
-                for obj_name in available_names:
-                    similarity = SequenceMatcher(None, target_lower, obj_name.lower()).ratio()
-                    if similarity > best_score and similarity > 0.75:
-                        best_match = obj_name
+                for cls_name in available_classes:
+                    similarity = SequenceMatcher(None, target_lower, cls_name.lower()).ratio()
+                    if similarity > best_score and similarity > 0.70:
+                        best_match = cls_name
                         best_score = similarity
                 
                 if best_match:
-                    # Found a fuzzy match
+                    # Found fuzzy match
                     processed_targets.append(best_match)
-                    visibility_status.append(f"~ {best_match} (matched from '{target_name}', {best_score:.0%} confidence)")
+                    if best_match in visible_names:
+                        validation_status.append(f"~ {best_match} (matched '{target_name}', visible, {best_score:.0%} confidence)")
+                    else:
+                        validation_status.append(f"~ {best_match} (matched '{target_name}', will search, {best_score:.0%} confidence)")
                 else:
-                    # No visible match, but add anyway (might appear later)
-                    processed_targets.append(target_name)
-                    visibility_status.append(f"○ {target_name} (not currently visible - will search when it appears)")
+                    # No match found - REJECT this target
+                    rejected_targets.append(target_name)
+                    validation_status.append(f"✗ '{target_name}' is not a valid object class")
+        
+        # If all targets rejected, show available options
+        if not processed_targets:
+            available_str = ", ".join(sorted(available_classes))
+            return f"❌ None of your targets are valid. Available classes: {available_str}"
         
         # Remove duplicates while preserving order
         processed_targets = list(dict.fromkeys(processed_targets))
         
-        # Set the target list
+        # Set the validated target list
         requests.post(
             f"{FASTAPI_URL}/command",
             json={
@@ -258,12 +273,15 @@ def add_targets_to_list(target_names: list[str], mode: str = "unordered") -> str
         
         # Build response
         response = f"Target list set to {mode} mode:\n"
-        response += "\n".join(visibility_status)
+        response += "\n".join(validation_status)
         
-        return response
-    
+        if rejected_targets:
+            response += f"\n\n⚠️ Rejected (not valid classes): {', '.join(rejected_targets)}"
+        
+        return response.strip()
+        
     except Exception as e:
-        return f"Error adding targets: {str(e)}"
+        return f"Error updating target list: {str(e)}"
 
 
 @mcp.tool()
@@ -288,7 +306,90 @@ def mark_grasped() -> str:
     requests.post(f"{FASTAPI_URL}/command", json={"instruction": "mark_grasped", "value": ""})
     return "Object marked as grasped."
 
-# --- REWRITTEN VISION TOOLS ---
+
+@mcp.tool()
+def get_current_target_list() -> str:
+    """
+    Get the current target list and list mode (ordered/unordered).
+    Reads from shared state maintained by the vision pipeline.
+    
+    Returns: Current target list with mode
+    Example: User asks "What am I looking for?" or "What's my target list?"
+    """
+    try:
+        state = requests.get(f"{FASTAPI_URL}/state").json()
+        targets = state.get("target_list", [])  # NOT target_list_state
+        mode = state.get("list_mode", "unordered")
+        
+        if not targets:
+            return "Your target list is empty. Say 'Add [object name]' to add a target."
+        
+        if mode == "ordered":
+            response = f"Ordered target list ({len(targets)} item{'s' if len(targets) > 1 else ''}):\n"
+            for i, target in enumerate(targets, 1):
+                response += f"{i}. {target}\n"
+        else:
+            response = f"Unordered target list ({len(targets)} item{'s' if len(targets) > 1 else ''}):\n"
+            response += ", ".join(targets)
+        
+        return response.strip()
+    except Exception as e:
+        return f"Error retrieving target list: {str(e)}"
+
+
+@mcp.tool()
+def get_grasped_objects_history() -> str:
+    """
+    Get the list of previously grasped objects from the memory file.
+    
+    Returns: List of successfully grasped objects
+    Example: User asks "What have I already grasped?" or "Show my progress"
+    """
+    try:
+        import json
+        from pathlib import Path
+        
+        # Find the memory file
+        # Try participant 1 first, then search for any memory file
+        possible_paths = [
+            Path("results") / "memory_participant_1.json",
+            Path("./results") / "memory_participant_1.json",
+            Path("/app/results") / "memory_participant_1.json",  # Docker path
+        ]
+        
+        # Also search for any participant memory file
+        results_dir = Path("results")
+        if results_dir.exists():
+            for mem_file in results_dir.glob("memory_participant_*.json"):
+                possible_paths.insert(0, mem_file)
+        
+        memory = None
+        for path in possible_paths:
+            if path.exists():
+                try:
+                    with open(path, 'r') as f:
+                        memory = json.load(f)
+                    break
+                except Exception:
+                    continue
+        
+        if memory is None:
+            return "No grasped objects yet. Complete a target to add to your history!"
+        
+        grasped_list = memory.get("grasped_objects", [])
+        
+        if not grasped_list:
+            return "You haven't grasped any objects yet. Start a target to begin!"
+        
+        response = f"Objects successfully grasped ({len(grasped_list)}):\n"
+        for obj in grasped_list:
+            response += f"✓ {obj}\n"
+        
+        return response.strip()
+    except Exception as e:
+        return f"Error retrieving grasped objects: {str(e)}"
+
+# Vision tools
 
 @mcp.tool()
 def analyze_camera_view(question: str) -> str:
@@ -382,7 +483,7 @@ def find_specific_object(class_name: str, description: str) -> str:
     except Exception as e:
         return f"Failed to run specific target lock: {e}"
 
-# --- Utility / Hardware Tools ---
+# Utility / Hardware Tools
 
 @mcp.tool()
 def get_visible_objects() -> str:
@@ -408,6 +509,73 @@ def get_hardware_status() -> str:
         return f"Bracelet is {bracelet}. Belt is {belt}."
     except:
         return "Hardware status unavailable."
+    
+@mcp.tool()
+def toggle_battery_saver(state: str) -> str:
+    """
+    Turn battery saver mode ON or OFF.
+    
+    Args:
+        state: "on" to enable, "off" to disable
+    
+    When ON: Phone camera runs at 1 FPS when idle, high FPS only when actively targeting
+    When OFF: Phone camera always runs at high FPS (uses more battery)
+    
+    Example: User says "Turn battery saver on" or "Turn off battery saver"
+    """
+    try:
+        state_lower = state.lower().strip()
+        
+        if state_lower in ["on", "enable", "yes", "true", "1"]:
+            enable = True
+            status_text = "enabled"
+        elif state_lower in ["off", "disable", "no", "false", "0"]:
+            enable = False
+            status_text = "disabled"
+        else:
+            return f"Please specify 'on' or 'off'. You said '{state}'."
+        
+        # Get current preferences
+        prefs_resp = requests.get(f"{FASTAPI_URL}/state").json()
+        prefs = prefs_resp.get("preferences", {})
+        
+        # Update battery saver setting
+        prefs["battery_saver"] = enable
+        
+        # Send updated preferences back to server
+        requests.post(
+            f"{FASTAPI_URL}/command",
+            json={
+                "instruction": "update_preferences",
+                "value": json.dumps(prefs)
+            }
+        )
+        
+        return f"Battery saver mode {status_text}. Phone will now use {'less' if enable else 'more'} battery."
+        
+    except Exception as e:
+        return f"Error toggling battery saver: {str(e)}"
+
+
+@mcp.tool()
+def get_battery_saver_status() -> str:
+    """
+    Check if battery saver mode is currently ON or OFF.
+    
+    Example: User says "Is battery saver on?" or "Check battery mode"
+    """
+    try:
+        state = requests.get(f"{FASTAPI_URL}/state").json()
+        prefs = state.get("preferences", {})
+        is_enabled = prefs.get("battery_saver", False)
+        
+        if is_enabled:
+            return "Battery saver mode is ON. Phone camera will idle at low FPS when no target is active, and switch to high FPS when targeting."
+        else:
+            return "Battery saver mode is OFF. Phone camera always runs at high FPS for optimal responsiveness."
+    
+    except Exception as e:
+        return f"Error checking battery saver status: {str(e)}"
 
 @mcp.tool()
 def control_vision(instruction: str, value: str = "") -> str:

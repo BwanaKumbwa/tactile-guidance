@@ -1,20 +1,3 @@
-"""
-vision_pipeline.py
-
-Pure computer-vision + haptic-navigation pipeline.
-No experiment trial logic, no CSV output, no OpenCV display loops.
-
-Changes vs previous version:
-  FIX  — Empty-crop crash in StrongSORT: clip all boxes to image bounds and
-          filter out any with area < 4 px² BEFORE calling tracker.update().
-          cv2.resize(empty_array) → RuntimeError was the symptom.
-  NEW  — PipelineConfig.use_ml_depth_fallback (default False).
-          run_depth=True  → always process hardware depth from the phone.
-          use_ml_depth_fallback=False → never load UniDepth / MiDAS.
-          Set use_ml_depth_fallback=True only when you explicitly want the
-          heavy ML model as a last resort (no phone depth available).
-"""
-
 from __future__ import annotations
 
 import json
@@ -47,9 +30,7 @@ from yolov5.utils.torch_utils import select_device, smart_inference_mode
 from strongsort.strong_sort import StrongSORT
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Module-level helpers
-# ═══════════════════════════════════════════════════════════════════════════
 
 def _put_replace(q: queue.Queue, item: Any) -> None:
     """Non-blocking put that silently drops the oldest item when the queue is full."""
@@ -111,9 +92,7 @@ def _validate_boxes(preds: torch.Tensor, img_h: int, img_w: int,
     return preds[valid]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Configuration dataclass
-# ═══════════════════════════════════════════════════════════════════════════
 
 @dataclass
 class PipelineConfig:
@@ -178,9 +157,7 @@ class PipelineConfig:
     output_path:             str   = 'results/grasping/'
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Inter-thread data containers
-# ═══════════════════════════════════════════════════════════════════════════
 
 @dataclass
 class _PostItem:
@@ -200,9 +177,7 @@ class DisplayItem:
     fps:           float
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # VisionPipeline
-# ═══════════════════════════════════════════════════════════════════════════
 
 class VisionPipeline:
     """
@@ -270,7 +245,7 @@ class VisionPipeline:
         self._pt_hand:     bool  = False
         self._cmd_table:   dict  = {}
 
-    # ── Public API ───────────────────────────────────────────────────────
+    # Public API
 
     @property
     def display_queue(self) -> queue.Queue:
@@ -308,7 +283,7 @@ class VisionPipeline:
             for dev in self._feedback_devices:
                 dev.stop()
 
-    # ── Lifecycle ────────────────────────────────────────────────────────
+    # Lifecycle
 
     def start(self) -> 'VisionPipeline':
         self._setup()
@@ -329,7 +304,7 @@ class VisionPipeline:
         for t in self._threads:
             t.join(timeout=5.0)
 
-    # ── Setup ────────────────────────────────────────────────────────────
+    # Setup
 
     @smart_inference_mode()
     def _setup(self) -> None:
@@ -370,7 +345,8 @@ class VisionPipeline:
                 nn_budget=100, mc_lambda=0.995, ema_alpha=0.9,
             )
 
-        # ── Depth estimator ───────────────────────────────────────────────
+        # Depth estimator
+        #
         # Hardware depth from the Android phone (ARCore / depth sensor) is
         # always the primary source and costs nothing extra to process.
         #
@@ -423,9 +399,7 @@ class VisionPipeline:
         self._publish_available_classes()
         print('[Pipeline] Ready.')
 
-    # ════════════════════════════════════════════════════════════════════
     # Thread A: Inference
-    # ════════════════════════════════════════════════════════════════════
 
     def _inference_loop(self) -> None:
         if torch.cuda.is_available():
@@ -464,9 +438,7 @@ class VisionPipeline:
         finally:
             self._stop_event.set()
 
-    # ════════════════════════════════════════════════════════════════════
     # Thread B: Post-processing
-    # ════════════════════════════════════════════════════════════════════
 
     def _post_loop(self) -> None:
         prev_frames:  Optional[np.ndarray] = None
@@ -481,12 +453,12 @@ class VisionPipeline:
             t_start = time.time()
             im0     = item.im0
 
-            # ① MCP commands
+            # MCP commands
             if not self._process_mcp_commands():
                 self._stop_event.set()
                 break
 
-            # ② NMS
+            # NMS
             cfg = self._cfg
             pred_target = non_max_suppression(
                 item.pred_obj, cfg.conf_thres, cfg.iou_thres,
@@ -499,13 +471,13 @@ class VisionPipeline:
                 if len(hd):
                     hd[5] += self._index_add
 
-            # ③ Scale + merge
+            # Scale + merge
             preds = torch.cat((pred_target[0], pred_hand[0]), dim=0)
             if len(preds) > 0:
                 preds[:, :4] = scale_boxes(
                     item.tensor_shape, preds[:, :4], im0.shape).round()
 
-            # ④ Validate boxes before tracker
+            # Validate boxes before tracker
             #
             # FIX: StrongSORT's _get_features slices image crops with:
             #   im = ori_img[y1:y2, x1:x2]
@@ -521,7 +493,7 @@ class VisionPipeline:
             if len(preds) > 0:
                 preds = _validate_boxes(preds, img_h, img_w, min_side=2)
 
-            # ⑤ Tracking
+            # Tracking
             curr_frames = im0
             hand_ids    = [h + self._index_add for h in cfg.classes_hand]
             if cfg.run_tracker and self._tracker is not None:
@@ -548,7 +520,7 @@ class VisionPipeline:
             outputs = [np.concatenate((xyxy2xywh(bb[:4]), bb[4:])) for bb in outputs]
             outputs = [np.append(bb, -1.0) for bb in outputs]
 
-            # ⑥ Camera-shake frame drop
+            # Camera-shake frame drop
             if prev_frames is not None and len(outputs) > 0:
                 g1 = cv2.cvtColor(curr_frames, cv2.COLOR_BGR2GRAY)
                 g2 = cv2.cvtColor(prev_frames, cv2.COLOR_BGR2GRAY)
@@ -557,24 +529,24 @@ class VisionPipeline:
 
             prev_frames = curr_frames
 
-            # ⑦ Depth
+            # Depth
             outputs, depth_img = self._resolve_depth(
                 outputs, im0, item.hw_depth, prev_outputs)
             prev_outputs = np.array(outputs) if outputs else np.array([])
 
-            # ⑧ Publish + opportunistic lock
+            # Publish + opportunistic lock
             self._publish_visible_objects(outputs, im0.shape)
             self._opportunistic_lock(outputs)
 
-            # ⑨ Haptic engine
+            # Haptic engine
             curr_target = None
             if self._class_target_obj != -1 and not self._navigation_paused:
                 curr_target = self._run_haptic_engine(outputs)
 
-            # ⑩ WebSocket
+            # WebSocket
             self._push_result_queue(outputs, im0.shape)
 
-            # ⑪ Display queue
+            # Display queue
             fps = 1.0 / max(time.time() - t_start, 1e-6)
             ann = self._annotate_frame(im0, outputs, curr_target, fps)
             _put_replace(self._display_q, DisplayItem(
@@ -584,12 +556,10 @@ class VisionPipeline:
                 fps=fps,
             ))
 
-            # ⑫ Memory flush
+            # Memory flush
             self._periodic_memory_save()
 
-    # ════════════════════════════════════════════════════════════════════
     # Preprocessing + inference (no smart_inference_mode — see prior fix note)
-    # ════════════════════════════════════════════════════════════════════
 
     def _preprocess(self, im: np.ndarray) -> torch.Tensor:
         tensor = torch.from_numpy(im).to(self._device)
@@ -614,9 +584,7 @@ class VisionPipeline:
                 pred_hand = self._model_hand(tensor, augment=self._cfg.augment)
         return pred_obj, pred_hand
 
-    # ════════════════════════════════════════════════════════════════════
     # Depth resolution
-    # ════════════════════════════════════════════════════════════════════
 
     def _should_estimate_depth(self, current_target_bbox: Optional[np.ndarray]) -> bool:
         """Three-gate decision for ML depth (only runs when use_ml_depth_fallback=True)."""
@@ -648,12 +616,12 @@ class VisionPipeline:
         if not self._cfg.run_depth:
             return outputs, None
 
-        # ── 1. Hardware path (ARCore / phone depth sensor) ────────────────
+        # 1. Hardware path (ARCore / phone depth sensor)
         if hw_depth is not None:
             self._depth_img = hw_depth
             return _bbs_to_depth(self._depth_img, outputs), self._depth_img
 
-        # ── 2. ML fallback (optional, heavy, disabled by default) ─────────
+        # 2. ML fallback (optional, heavy, disabled by default)
         if self._depth_estimator is not None:
             current_target = next(
                 (bb for bb in outputs if bb[5] == self._class_target_obj), None)
@@ -665,7 +633,7 @@ class VisionPipeline:
                                            if current_target is not None else None)
                 return _bbs_to_depth(self._depth_img, outputs), self._depth_img
 
-        # ── 3. Propagate from previous frame via track_id (always free) ───
+        # 3. Propagate from previous frame via track_id (always free)
         if self._depth_img is not None and prev_outputs.size > 0:
             for bb in outputs:
                 key   = bb[4] if bb[4] != -1 else None
@@ -676,9 +644,7 @@ class VisionPipeline:
 
         return outputs, self._depth_img
 
-    # ════════════════════════════════════════════════════════════════════
     # Haptic engine
-    # ════════════════════════════════════════════════════════════════════
 
     def _run_haptic_engine(self, outputs: list) -> Optional[np.ndarray]:
         if self._grasped:
@@ -790,9 +756,7 @@ class VisionPipeline:
                 print(f'[Pipeline] Opportunistic lock: {name}')
                 break
 
-    # ════════════════════════════════════════════════════════════════════
     # MCP command dispatch
-    # ════════════════════════════════════════════════════════════════════
 
     _RESET_CMDS = frozenset({
         'set_target', 'set_target_list', 'mark_grasped',
@@ -962,9 +926,7 @@ class VisionPipeline:
         self._publish_target(label)
         print(f'[Pipeline] Specific lock: {cls_name} (ID={self._specific_track_id})')
 
-    # ════════════════════════════════════════════════════════════════════
     # State publishers
-    # ════════════════════════════════════════════════════════════════════
 
     def _publish_target(self, name: str) -> None:
         if self._shared_state:
@@ -1005,9 +967,7 @@ class VisionPipeline:
         if self._shared_state:
             self._shared_state.set_available_classes(list(coco_labels.values()))
 
-    # ════════════════════════════════════════════════════════════════════
     # Memory management
-    # ════════════════════════════════════════════════════════════════════
 
     def _init_memory(self) -> None:
         cfg      = self._cfg
@@ -1069,9 +1029,7 @@ class VisionPipeline:
             self._save_memory_async()
             self._last_memory_save = time.time()
 
-    # ════════════════════════════════════════════════════════════════════
     # Rendering
-    # ════════════════════════════════════════════════════════════════════
 
     def _annotate_frame(self, im0: np.ndarray, outputs: list,
                          curr_target, fps: float) -> np.ndarray:

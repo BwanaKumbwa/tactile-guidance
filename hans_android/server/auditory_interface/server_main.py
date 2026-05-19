@@ -33,7 +33,7 @@ from mcp_config import get_server_parameters, convert_mcp_to_openai_tools
 import argparse
 import sys
 
-# ========== CLI ARGUMENT PARSER ==========
+# CLI arguments parser
 def parse_arguments():
     parser = argparse.ArgumentParser(
         description="HANS Server - Tactile bracelet guidance system for blind users",
@@ -388,6 +388,30 @@ def set_verbosity(req: VerbosityRequest):
     """server_hans calls this to change LLM prompt"""
     brain.set_verbosity(req.level)
     return {"status": "ok"}
+
+@app.get("/memory")
+def get_memory():
+    """Get current memory state (targets and grasped objects)."""
+    try:
+        # Read from the memory file if available
+        from pathlib import Path
+        mem_file = Path("results") / "memory_participant_1.json"  # Adjust participant number
+        if mem_file.exists():
+            with open(mem_file) as f:
+                memory = json.load(f)
+                return {
+                    "grasped_objects": memory.get("grasped_objects", []),
+                    "target_list": memory.get("target_list", []),
+                    "list_mode": memory.get("list_mode", "ordered")
+                }
+    except Exception as e:
+        print(f"Error reading memory: {e}")
+    
+    return {
+        "grasped_objects": [],
+        "target_list": [],
+        "list_mode": "ordered"
+    }
 
 # Android endpoints
 @app.websocket("/ws/video")

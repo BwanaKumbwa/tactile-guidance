@@ -1,19 +1,3 @@
-"""
-shared_state.py
-Extracted from server_main.py.
-
-🟢 Granular per-domain locks replace the original single _lock:
-  _vis_lock    — visible_objects   (hot: written every frame at ~30 Hz)
-  _target_lock — target + list     (medium: written per MCP command)
-  _pref_lock   — preferences       (cold: written per voice command)
-  _hw_lock     — hardware status   (cold: written per WebSocket connect)
-  _map_lock    — world_map         (medium: written per confident detection)
-  _meta_lock   — available_classes, memory_existed (write-once)
-
-Callers in server_main.py just replace `from server_main import SharedState`
-with `from shared_state import SharedState`.
-"""
-
 import threading
 from typing import Optional
 
@@ -27,37 +11,35 @@ class SharedState:
     """
 
     def __init__(self):
-        # ── Hot path: vision writes every frame ──────────────────────
+        # Hot path: vision writes every frame
         self._vis_lock        = threading.Lock()
         self._visible_objects: list = []
 
-        # ── Medium path: per-command writes ──────────────────────────
+        # Medium path: per-command writes
         self._target_lock     = threading.Lock()
         self._current_target: str  = "none"
         self._target_list:    list = []
         self._list_mode:      str  = "ordered"
 
-        # ── Medium path: world-map (per confident detection) ─────────
+        # Medium path: world-map (per confident detection)
         self._map_lock        = threading.Lock()
         self._world_map:      dict = {}
 
-        # ── Cold path: per-voice-command writes ───────────────────────
+        # Cold path: per-voice-command writes
         self._pref_lock       = threading.Lock()
         self._preferences:    dict = {"speech_speed": "normal", "verbosity": "normal"}
 
-        # ── Cold path: per-connection writes ─────────────────────────
+        # Cold path: per-connection writes
         self._hw_lock         = threading.Lock()
         self._bracelet_connected: bool = False
         self._belt_connected:     bool = False
 
-        # ── Write-once (set at startup) ───────────────────────────────
+        # Write-once (set at startup)
         self._meta_lock       = threading.Lock()
         self._available_classes: list = []
         self._memory_existed:    bool = False
 
-    # ------------------------------------------------------------------
     # Hot path — visible objects (~30 Hz writes from YOLO thread)
-    # ------------------------------------------------------------------
 
     def set_visible_objects(self, objects: list) -> None:
         with self._vis_lock:
@@ -67,9 +49,7 @@ class SharedState:
         with self._vis_lock:
             return list(self._visible_objects)
 
-    # ------------------------------------------------------------------
     # Medium path — active target + target list
-    # ------------------------------------------------------------------
 
     def set_target(self, target: str) -> None:
         with self._target_lock:
@@ -88,9 +68,7 @@ class SharedState:
         with self._target_lock:
             return {"targets": list(self._target_list), "mode": self._list_mode}
 
-    # ------------------------------------------------------------------
     # Medium path — world map (per confident detection)
-    # ------------------------------------------------------------------
 
     def update_world_map(self, new_data: dict) -> None:
         with self._map_lock:
@@ -100,9 +78,7 @@ class SharedState:
         with self._map_lock:
             return dict(self._world_map)
 
-    # ------------------------------------------------------------------
     # Cold path — user preferences
-    # ------------------------------------------------------------------
 
     def set_preferences(self, prefs: dict) -> None:
         with self._pref_lock:
@@ -112,9 +88,7 @@ class SharedState:
         with self._pref_lock:
             return dict(self._preferences)
 
-    # ------------------------------------------------------------------
     # Cold path — hardware connection status
-    # ------------------------------------------------------------------
 
     def set_hardware_status(self, bracelet: bool, belt: bool) -> None:
         with self._hw_lock:
@@ -128,9 +102,7 @@ class SharedState:
                 "belt":     self._belt_connected
             }
 
-    # ------------------------------------------------------------------
     # Write-once — available classes (set after model load)
-    # ------------------------------------------------------------------
 
     def set_available_classes(self, classes: list) -> None:
         with self._meta_lock:
@@ -140,9 +112,7 @@ class SharedState:
         with self._meta_lock:
             return list(self._available_classes)
 
-    # ------------------------------------------------------------------
     # Write-once — memory existence flag (set at boot)
-    # ------------------------------------------------------------------
 
     def set_memory_existed(self, existed: bool) -> None:
         with self._meta_lock:
@@ -152,9 +122,7 @@ class SharedState:
         with self._meta_lock:
             return self._memory_existed
 
-    # ------------------------------------------------------------------
     # Convenience — full snapshot for the /internal/state endpoint
-    # ------------------------------------------------------------------
 
     def get_full_state(self) -> dict:
         """

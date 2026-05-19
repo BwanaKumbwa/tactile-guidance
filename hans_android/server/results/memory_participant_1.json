@@ -1,8 +1,5 @@
 {
-    "target_list": [
-        "cup",
-        "spotted plant"
-    ],
+    "target_list": [],
     "list_mode": "unordered",
     "grasped_objects": [
         "cup"
@@ -22,40 +19,44 @@
     "command_history": [],
     "world_map": {
         "myright": {
-            "location": "Bottom Right, 0.43m",
-            "last_seen": "01:17:43 AM"
+            "location": "Middle Center, 0.88m",
+            "last_seen": "03:32:38 PM"
         },
         "myleft": {
-            "location": "Bottom Right, 0.31m",
-            "last_seen": "01:17:44 AM"
+            "location": "Middle Center, 0.91m",
+            "last_seen": "03:32:37 PM"
         },
         "potted plant": {
             "location": "Middle Center, 2.54m",
             "last_seen": "12:50:40 AM"
         },
         "clock": {
-            "location": "Top Center, 0.48m",
-            "last_seen": "12:50:50 AM"
+            "location": "Middle Center, 0.34m",
+            "last_seen": "01:12:37 PM"
         },
         "cup": {
-            "location": "Middle Center, 0.47m",
-            "last_seen": "01:17:59 AM"
+            "location": "Middle Center, 0.51m",
+            "last_seen": "01:17:55 PM"
         },
         "bottle": {
-            "location": "Top Center, 0.50m",
-            "last_seen": "12:50:42 AM"
+            "location": "Middle Center, 0.35m",
+            "last_seen": "01:12:57 PM"
         },
         "apple": {
-            "location": "Top Center, 0.49m",
-            "last_seen": "12:50:50 AM"
+            "location": "Middle Center, 0.53m",
+            "last_seen": "01:12:25 PM"
         },
         "bowl": {
-            "location": "Middle Right, 0.45m",
-            "last_seen": "09:31:33 AM"
+            "location": "Middle Right, 0.81m",
+            "last_seen": "01:12:56 PM"
         },
         "fork": {
-            "location": "Top Center, 0.48m",
-            "last_seen": "12:50:53 AM"
+            "location": "Top Center, 0.86m",
+            "last_seen": "10:17:31 AM"
+        },
+        "wine glass": {
+            "location": "Middle Left, 0.55m",
+            "last_seen": "01:11:39 PM"
         }
     }
 }

@@ -1,15 +1,3 @@
-"""
-controller.py — Refactored
-Changes applied from priority matrix:
-  🔴 Removed dead im0.copy() result_queue write
-  🔴 Removed unreachable post-return code (kept in bracelet.py)
-  🟠 Extracted _full_engine_reset() helper (was duplicated 5×)
-  🟠 Split experiment_loop into discrete pipeline stage methods
-  🟠 MCP dispatcher replaced with dispatch-table + per-command handlers
-  🟡 Wall-clock depth estimation throttle (was frame % 10)
-  🟢 Async memory persistence via daemon thread
-"""
-
 import queue
 import sys
 import math
@@ -44,10 +32,7 @@ from yolov5.utils.plots import Annotator, colors
 from yolov5.utils.torch_utils import select_device, smart_inference_mode
 from strongsort.strong_sort import StrongSORT
 
-
-# ---------------------------------------------------------------------------
 # Module-level utilities
-# ---------------------------------------------------------------------------
 
 def beginning_sound():
     playsound('resources/sound/beginning.mp3')
@@ -89,9 +74,7 @@ def close_app(controller):
     sys.exit()
 
 
-# ---------------------------------------------------------------------------
 # AutoAssign base
-# ---------------------------------------------------------------------------
 
 class AutoAssign:
     def __init__(self, mcp_queue=None, shared_state=None, **kwargs):
@@ -101,15 +84,9 @@ class AutoAssign:
         self.shared_state = shared_state
 
 
-# ---------------------------------------------------------------------------
 # TaskController
-# ---------------------------------------------------------------------------
 
 class TaskController(AutoAssign):
-
-    # ------------------------------------------------------------------
-    # Initialisation
-    # ------------------------------------------------------------------
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -149,9 +126,7 @@ class TaskController(AutoAssign):
         # Built lazily in experiment_loop
         self._command_table: dict = {}
 
-    # ------------------------------------------------------------------
     # State publishers
-    # ------------------------------------------------------------------
 
     def _publish_target(self, name: str) -> None:
         if self.shared_state is not None:
@@ -196,9 +171,7 @@ class TaskController(AutoAssign):
         if self.shared_state is not None:
             self.shared_state.set_available_classes(list(coco_labels.values()))
 
-    # ------------------------------------------------------------------
-    # 🔴  Engine reset — was copy-pasted 5× in the original
-    # ------------------------------------------------------------------
+    # Engine reset
 
     def _full_engine_reset(self) -> None:
         """Reset all navigation state before switching to a new target."""
@@ -211,10 +184,7 @@ class TaskController(AutoAssign):
             bc.prev_target = None
             bc.frozen = False
 
-    # ------------------------------------------------------------------
-    # 🟠  MCP command dispatch table
-    # ------------------------------------------------------------------
-
+    # MCP command dispatch table
     # Commands that require a full engine reset before their handler runs
     _RESET_INSTRUCTIONS = frozenset({
         "set_target", "set_target_list", "mark_grasped",
@@ -245,7 +215,7 @@ class TaskController(AutoAssign):
         else:
             print(f"[System] Unknown instruction: {instruction}", file=sys.stderr)
 
-    # -- Individual command handlers --
+    # Individual command handlers
 
     def _cmd_stop(self, _):
         print("[System] Stop command received.", file=sys.stderr)
@@ -386,9 +356,7 @@ class TaskController(AutoAssign):
         self._publish_target(label)
         print(f"[System] Locked onto {cls_name} (track_id={self.specific_track_id})")
 
-    # ------------------------------------------------------------------
-    # 🟠  Pipeline stage 1 — MCP command processing
-    # ------------------------------------------------------------------
+    # Pipeline stage 1 — MCP command processing
 
     def _process_mcp_commands(self) -> bool:
         """
@@ -399,7 +367,7 @@ class TaskController(AutoAssign):
         if not (hasattr(self, 'mcp_queue') and self.mcp_queue):
             return True
         try:
-            for _ in range(16):   # Safety cap: max 16 commands per frame
+            for _ in range(16): # Safety cap: max 16 commands per frame
                 cmd = self.mcp_queue.get_nowait()
                 print(f"\n[System] CMD: {cmd}", file=sys.stderr, flush=True)
                 try:
@@ -412,9 +380,7 @@ class TaskController(AutoAssign):
             print(f"[System] Command error: {e}", file=sys.stderr)
         return True
 
-    # ------------------------------------------------------------------
-    # 🟠  Pipeline stage 2 — YOLO inference
-    # ------------------------------------------------------------------
+    # Pipeline stage 2 — YOLO inference
 
     def _run_inference(self, im):
         """Returns (pred_target, pred_hand) after NMS."""
@@ -436,9 +402,7 @@ class TaskController(AutoAssign):
                 self.classes_hand, self.agnostic_nms, max_det=self.max_det)
         return pred_target, pred_hand
 
-    # ------------------------------------------------------------------
-    # 🟠  Pipeline stage 3 — Tracking + output normalisation
-    # ------------------------------------------------------------------
+    # Pipeline stage 3 — Tracking + output normalisation
 
     def _run_tracking(self, pred_target, pred_hand, im, im0, index_add) -> list:
         """
@@ -492,9 +456,7 @@ class TaskController(AutoAssign):
 
         return outputs
 
-    # ------------------------------------------------------------------
-    # 🟡  Pipeline stage 4 — Depth estimation (wall-clock throttled)
-    # ------------------------------------------------------------------
+    # Pipeline stage 4 — Depth estimation (wall-clock throttled)
 
     def _estimate_depth(self, outputs: list, im0) -> list:
         """
@@ -507,7 +469,7 @@ class TaskController(AutoAssign):
             self.depth_img = None
             return outputs
 
-        # ── Hardware path (Android ARCore depth) ──────────────────────
+        # Hardware path (Android ARCore depth)
         hw_depth = getattr(self.dataset, 'current_depth', None)
         if hw_depth is not None:
             if hw_depth.shape[:2] != im0.shape[:2]:
@@ -517,7 +479,7 @@ class TaskController(AutoAssign):
             self.depth_img = hw_depth
             return bbs_to_depth(im0, self.depth_img, outputs)
 
-        # ── ML fallback: ~3 Hz ────────────────────────────────────────
+        # ML fallback: ~3 Hz
         now = time.time()
         estimator = getattr(self, 'depth_estimator', None)
         if estimator is not None and (now - self.last_depth_estimate_time) >= 0.33:
@@ -535,9 +497,7 @@ class TaskController(AutoAssign):
                 output[7] = match[0][7] if match.size > 0 else -1
         return outputs
 
-    # ------------------------------------------------------------------
     # Pipeline stage 5 — Opportunistic unordered target locking
-    # ------------------------------------------------------------------
 
     def _opportunistic_target_lock(self, outputs: list) -> None:
         """When in unordered mode with no active target, lock onto the first visible list item."""
@@ -565,9 +525,7 @@ class TaskController(AutoAssign):
                 print(f"[System] Opportunistic lock: {obj_name}")
                 break
 
-    # ------------------------------------------------------------------
     # Pipeline stage 6 — Haptic engine
-    # ------------------------------------------------------------------
 
     def _run_haptic_engine(self, outputs: list, index_add: int):
         """
@@ -575,7 +533,7 @@ class TaskController(AutoAssign):
         Returns curr_target (for visualisation) or None.
         Modifies self.grasped and self.vibration_timer in-place.
         """
-        # ── Still in post-grasp cooldown ─────────────────────────────
+        # Still in post-grasp cooldown
         if self.grasped:
             if self.vibration_timer is None:
                 self.vibration_timer = time.time()
@@ -586,7 +544,7 @@ class TaskController(AutoAssign):
                     self.vibration_timer = -1
             return None
 
-        # ── Specific-ID re-acquisition ────────────────────────────────
+        # Specific-ID re-acquisition
         specific_id = self.specific_track_id
         if specific_id != -1:
             target_det = next(
@@ -608,7 +566,7 @@ class TaskController(AutoAssign):
             if target_det is not None:
                 self.specific_bbox = list(map(float, target_det[:4]))
 
-        # ── Filter: hands + relevant target only ─────────────────────
+        # Filter: hands + relevant target only
         hand_ids = [h + index_add for h in self.classes_hand]
         filtered = [
             det for det in outputs
@@ -630,10 +588,7 @@ class TaskController(AutoAssign):
         self.grasped = bool(new_grasped)
         return curr_target
 
-    # ------------------------------------------------------------------
-    # 🔴  Pipeline stage 7 — Render + WebSocket dispatch
-    #     Dead im0.copy() write removed here.
-    # ------------------------------------------------------------------
+    # Pipeline stage 7 — Render + WebSocket dispatch
 
     def _render_and_send(self, outputs: list, im0, curr_target,
                           fps: float, save_img: bool,
@@ -674,8 +629,7 @@ class TaskController(AutoAssign):
 
         im0 = annotator.result()
 
-        # ── JSON bounding-box dispatch to Android (WebSocket sender) ──
-        # 🔴 The dead `result_queue.put(im0.copy())` that was here has been removed.
+        # JSON bounding-box dispatch to Android (WebSocket sender)
         if hasattr(self, 'result_queue') and self.result_queue is not None:
             if not self.result_queue.full():
                 img_h, img_w = im0.shape[:2]
@@ -689,7 +643,7 @@ class TaskController(AutoAssign):
                     })
                 self.result_queue.put(boxes)
 
-        # ── Display ───────────────────────────────────────────────────
+        # Display
         if self.view_img:
             cv2.putText(im0, f"FPS:{int(fps)} Avg:{int(np.mean(self.fpss))}",
                         (20, 70), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 1)
@@ -717,7 +671,7 @@ class TaskController(AutoAssign):
                     pressed_key = -1
                 cv2.setWindowProperty("AIBox", cv2.WND_PROP_TOPMOST, 1)
 
-        # ── Video save ────────────────────────────────────────────────
+        # Video save
         if save_img:
             if self.dataset.mode == 'image':
                 cv2.imwrite(save_path, im0)
@@ -755,9 +709,7 @@ class TaskController(AutoAssign):
             colourmap = np.zeros_like(im0)
         return np.hstack((im0, colourmap))
 
-    # ------------------------------------------------------------------
-    # 🟢  Async memory persistence
-    # ------------------------------------------------------------------
+    # Async memory persistence
 
     def _save_memory_async(self) -> None:
         """
@@ -777,9 +729,7 @@ class TaskController(AutoAssign):
             self._save_memory_async()
             self.last_memory_save_time = time.time()
 
-    # ------------------------------------------------------------------
     # Memory initialisation
-    # ------------------------------------------------------------------
 
     def _init_memory(self, root: Path) -> None:
         mem_file  = root / 'results' / f"memory_participant_{self.participant}.json"
@@ -822,9 +772,7 @@ class TaskController(AutoAssign):
                 self.memory.get("list_mode", "ordered"))
             self.shared_state.update_world_map(self.memory.get("world_map", {}))
 
-    # ------------------------------------------------------------------
-    # 🟠  Main loop — clean orchestration of pipeline stages
-    # ------------------------------------------------------------------
+    # Main loop — clean orchestration of pipeline stages
 
     def experiment_loop(self, save_dir, save_img, index_add, vid_path, vid_writer):
         print('\nSTARTING MAIN LOOP')
@@ -850,27 +798,27 @@ class TaskController(AutoAssign):
             t_start = time.perf_counter()
             im0 = im0s[0].copy() if isinstance(im0s, list) else im0s.copy()
 
-            # ── 1. Commands ───────────────────────────────────────────
+            # 1. Commands
             if not self._process_mcp_commands():
                 break
 
-            # ── 2. Inference ──────────────────────────────────────────
+            # 2. Inference
             pred_target, pred_hand = self._run_inference(im)
 
-            # ── 3. Tracking ───────────────────────────────────────────
+            # 3. Tracking
             outputs = self._run_tracking(pred_target, pred_hand, im, im0, index_add)
 
-            # ── 4. Depth ──────────────────────────────────────────────
+            # 4. Depth
             outputs = self._estimate_depth(outputs, im0)
             self.prev_outputs = np.array(outputs) if outputs else np.array([])
 
-            # ── 5. Publish visible objects ────────────────────────────
+            # 5. Publish visible objects
             self._publish_visible_objects(outputs, im0.shape)
 
-            # ── 6. Opportunistic unordered lock ───────────────────────
+            # 6. Opportunistic unordered lock
             self._opportunistic_target_lock(outputs)
 
-            # ── 7. Manual target entry (experiment mode) ──────────────
+            # 7. Manual target entry (experiment mode)
             if not self.target_entered and self.manual_entry:
                 print(f"Available objects:\n{coco_labels}")
                 key = input("Enter target key: ")
@@ -882,22 +830,22 @@ class TaskController(AutoAssign):
                 self.grasped = False
                 self.vibration_timer = None
 
-            # ── 8. Haptic engine ──────────────────────────────────────
+            # 8. Haptic engine
             curr_target = None
             if self.class_target_obj != -1:
                 curr_target = self._run_haptic_engine(outputs, index_add)
 
-            # ── 9. Render + WebSocket ─────────────────────────────────
+            # 9. Render + WebSocket
             fps = 1.0 / max(time.perf_counter() - t_start, 1e-6)
             self.fpss.append(fps)
             save_path = self._render_and_send(
                 outputs, im0, curr_target, fps, save_img,
                 save_dir, vid_path, vid_writer, save_path)
 
-            # ── 10. Periodic memory save ──────────────────────────────
+            # 10. Periodic memory save
             self._periodic_memory_save()
 
-            # ── 11. Trial key-handling (experimental only) ────────────
+            # 11. Trial key-handling (experimental only)
             if self.view_img:
                 self.pressed_key = cv2.waitKey(1)
                 if self.experiment_trial_logic(self.pressed_key) == "break":
@@ -905,9 +853,7 @@ class TaskController(AutoAssign):
 
             self.prev_frames = self.curr_frames
 
-    # ------------------------------------------------------------------
     # Trial logic (experimental; separated from the vision pipeline)
-    # ------------------------------------------------------------------
 
     def experiment_trial_logic(self, pressed_key: int):
         """
@@ -915,8 +861,10 @@ class TaskController(AutoAssign):
         This is entirely decoupled from the vision pipeline above.
         """
         RESULT_LABELS = {
-            ord('y'): "SUCCESSFUL", ord('n'): "FAILED",
-            ord('f'): "SYSTEM FAILED", ord('t'): "WRONG TARGET"
+            ord('y'): "SUCCESSFUL",
+            ord('n'): "FAILED",
+            ord('f'): "SYSTEM FAILED",
+            ord('t'): "WRONG TARGET"
         }
 
         if pressed_key in RESULT_LABELS and not self.ready_for_next_trial:
@@ -952,9 +900,7 @@ class TaskController(AutoAssign):
                 self.belt_controller.stop_vibration()
             return "break"
 
-    # ------------------------------------------------------------------
     # Data output
-    # ------------------------------------------------------------------
 
     def append_output_data(self):
         bc = self.bracelet_controller
@@ -982,9 +928,7 @@ class TaskController(AutoAssign):
             self.output_path + f"{self.condition}_participant_{self.participant}.csv",
             index=False)
 
-    # ------------------------------------------------------------------
     # Model loaders
-    # ------------------------------------------------------------------
 
     def load_object_detector(self):
         print('\nLOADING OBJECT DETECTORS')
@@ -1023,9 +967,7 @@ class TaskController(AutoAssign):
         elif type == 'tracker':
             model.warmup()
 
-    # ------------------------------------------------------------------
     # Entry point
-    # ------------------------------------------------------------------
 
     @smart_inference_mode()
     def run(self):

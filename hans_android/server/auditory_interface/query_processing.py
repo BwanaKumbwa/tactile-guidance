@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 load_dotenv(override=True)
 
-# ========== MARKDOWN LOADER ==========
+# Markdown loader
 def load_markdown_file(filename: str) -> str:
     """Load markdown content from project root."""
     path = Path(__file__).parent.parent / filename
@@ -22,8 +22,7 @@ SOUL = load_markdown_file("SOUL.md")
 SKILLS = load_markdown_file("SKILLS.md")
 AGENTS = load_markdown_file("AGENTS.md")
 
-# Chat completions configuration
-
+# Custom API configuration (matching server_hans.py)
 API_URL = os.getenv("API_URL")
 API_KEY = os.getenv("API_KEY")
 LLM_MODEL = os.getenv("LLM_MODEL", "openai/gpt-oss-120b")
@@ -122,11 +121,6 @@ class HANSBrain:
                 self.update_system_prompt()
             return f"I will now be {level}."
         return f"Unknown verbosity level: {level}."
-        #if level in ["concise", "normal", "verbose"]:
-        #    self.verbosity = level
-        #    self.update_system_prompt()
-        #    return f"I will now be {level}."
-        #return f"Unknown verbosity level: {level}."
 
     async def _call_llm(self, openai_tools: list, model: str) -> dict:
         """Call LiteLLM endpoint with function calling support."""
@@ -224,130 +218,3 @@ class HANSBrain:
                 })
 
         return "Maximum iterations reached. Please try again."
-
-    '''async def _call_llm(self, openai_tools: list, model: str) -> dict:
-        """Makes an async HTTP POST to the custom LLM endpoint and returns parsed JSON."""
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_key}"
-        }
-
-        payload = {
-            "model": model,
-            "messages": self.messages,
-            "stream": False
-        }
-
-        # Only include tools in the payload if there are any
-        if openai_tools:
-            payload["tools"] = openai_tools
-            payload["tool_choice"] = "auto"
-
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                CUSTOM_API_URL,
-                headers=headers,
-                json=payload,
-                timeout=30.0
-            )
-            #response.raise_for_status()  # Raises an error on 4xx/5xx responses
-            if response.status_code != 200:
-                print(f"[DEBUG] Response status: {response.status_code}")
-                print(f"[DEBUG] Response body: {response.text}")  # Print full error
-            response.raise_for_status()
-            return response.json()'''
-    
-    '''async def _call_llm(self, openai_tools: list, model: str) -> dict:
-        """Makes an async HTTP POST to the custom LLM endpoint and returns parsed JSON."""
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_key}"
-        }
-        
-        messages = [msg for msg in self.messages if msg["role"] != "system"]
-        
-        payload = {
-            "model": model,
-            "messages": messages,
-            "stream": False,
-        }
-        
-        if openai_tools:
-            payload["tools"] = openai_tools
-            payload["tool_choice"] = "auto"
-
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                CUSTOM_API_URL,
-                headers=headers,
-                json=payload,
-                timeout=30.0
-            )
-            if response.status_code != 200:
-                print(f"[DEBUG] Response status: {response.status_code}")
-                print(f"[DEBUG] Response body: {response.text}")
-            response.raise_for_status()
-            
-            # DEBUG: Print the full response
-            llm_response = response.json()
-            print(f"[DEBUG] Full LLM Response:")
-            print(json.dumps(llm_response, indent=2))
-            
-            return llm_response
-
-    async def process_query(
-        self,
-        session: ClientSession,
-        user_text: str,
-        openai_tools: list,
-        model_type: str = LLM_MODEL   # <-- updated default
-    ) -> str:
-        """
-        Handles multi-step tool chaining.
-        """
-        print(f"   [AI Processing] User said: \"{user_text}\"")
-        self.messages.append({"role": "user", "content": user_text})
-
-        # Reasoning loop - continues until LLM gives a final text answer
-        while True:
-            # 1. Call the custom LLM endpoint
-            try:
-                llm_data = await self._call_llm(openai_tools, model_type)
-            except Exception as e:
-                print(f"   [ERROR] Failed to reach LLM API: {e}")
-                return "Sorry, I could not reach the AI service."
-
-            # Parse response — now plain dict access instead of attribute access
-            response_msg = llm_data["choices"][0]["message"]
-            tool_calls = response_msg.get("tool_calls")  # None if no tools requested
-
-            # 2. If no tools are needed — return the final text answer
-            if not tool_calls:
-                final_answer = response_msg.get("content", "")
-                self.messages.append({"role": "assistant", "content": final_answer})
-                return final_answer
-
-            # 3. Tools were requested — execute them all
-            print(f"   [Step] Model wants to run: {[t['function']['name'] for t in tool_calls]}")
-            self.messages.append(response_msg)  # Add the assistant "intent" to history
-
-            for tool_call in tool_calls:
-                func_name = tool_call["function"]["name"]
-                func_args = json.loads(tool_call["function"]["arguments"])
-
-                # Execute MCP tool
-                print(f"     > Running {func_name} with {func_args}")
-                mcp_result = await session.call_tool(func_name, arguments=func_args)
-
-                # Get output
-                tool_output = mcp_result.content[0].text
-                print(f"     < Result: {tool_output}")
-
-                # Add result to history so LLM can see it in the next loop iteration
-                self.messages.append({
-                    "role": "tool",
-                    "tool_call_id": tool_call["id"],   # dict access, not attribute
-                    "content": tool_output
-                })
-
-            # Loop back — LLM sees the tool results and decides next step or final answer'''

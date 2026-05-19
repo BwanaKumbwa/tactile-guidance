@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 from queue import PriorityQueue
 
-def map_obstacles(handBB, targetBB, depth_map, metric):
+def map_obstacles(handBB, targetBB, depth_map, metric, deployment_mode="deployment"):
     """
     Maps obstacles in a depth map relative to the positions of the hand and target bounding boxes.
 
@@ -13,6 +13,7 @@ def map_obstacles(handBB, targetBB, depth_map, metric):
                           Format: (x, y, width, height, ..., depth)
         depth_map (numpy.ndarray): A 2D array representing the depth map of the scene.
         metric (bool): A boolean indicating whether the depth values are in metric units (True) or disparity (False).
+        deployment_mode (str): Either "deployment" (no visualization) or "testing" (show windows).
 
     Returns:
         numpy.ndarray: A binary mask indicating the positions of obstacles in the depth map.
@@ -62,7 +63,13 @@ def map_obstacles(handBB, targetBB, depth_map, metric):
     mask_rgb = cv2.cvtColor(expanded_obstacle_mask.astype(np.uint8) * 255, cv2.COLOR_GRAY2BGR)
     #cv2.imshow("expanded_obstacle_mask", mask_rgb)
     #cv2.setWindowProperty("expanded_obstacle_mask", cv2.WND_PROP_TOPMOST, 1)
-    pressed_key = cv2.waitKey(1)
+    #pressed_key = cv2.waitKey(1)
+    pressed_key = -1
+    #if deployment_mode == "testing" and threading.current_thread() is threading.main_thread():
+    #    try:
+    #        pressed_key = cv2.waitKey(1)
+    #    except Exception as e:
+    #        print(f"[Warning] Could not call cv2.waitKey: {e}")
 
     return expanded_obstacle_mask
 
@@ -96,7 +103,7 @@ def check_obstacles_between_points(handBB, targetBB, depth_map, depth_threshold)
         mask_rgb = cv2.cvtColor(roi_depth_map.astype(np.uint8) * 255, cv2.COLOR_GRAY2BGR)
         #cv2.imshow("roi_depth_map", mask_rgb)
         #cv2.setWindowProperty("roi_depth_map", cv2.WND_PROP_TOPMOST, 1)
-        pressed_key = cv2.waitKey(1)
+        #pressed_key = cv2.waitKey(1)
     except:
         pass
 
@@ -175,7 +182,7 @@ def find_obstacle_target_point(handBB, targetBB, obstacle_map, leeway=10):
     cv2.circle(roi_rgb, (target_point[0], target_point[1]), radius=5, color=(0, 0, 255), thickness=-1)
     #cv2.imshow("ROI", roi_rgb)
     #cv2.setWindowProperty("ROI", cv2.WND_PROP_TOPMOST, 1)
-    pressed_key = cv2.waitKey(1)
+    #pressed_key = cv2.waitKey(1)
 
     angle_radians = np.arctan2(yc_hand - target_point[1], target_point[0] - xc_hand) # inverted y-axis
     angle = np.degrees(angle_radians) % 360

@@ -1,12 +1,3 @@
-"""
-master.py — Entry point and device composition.
-
-Wires VisionPipeline + (optionally) ExperimentRunner.
-Supports two execution modes:
-  deployment_mode=False  →  ExperimentRunner (standalone research use)
-  deployment_mode=True   →  plain VisionPipeline (server_main.py calls this)
-"""
-
 from __future__ import annotations
 
 import json
@@ -28,9 +19,7 @@ from vision_pipeline import PipelineConfig, VisionPipeline
 from experiment_runner import ExperimentRunner
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Virtual bracelet adapter (used in server / Android deployment)
-# ═══════════════════════════════════════════════════════════════════════════
 
 class _VirtualBraceletAdapter:
     """
@@ -97,9 +86,7 @@ class _VirtualBraceletAdapter:
         self._bc.mock_navigate = v
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Calibration loader
-# ═══════════════════════════════════════════════════════════════════════════
 
 def _load_calibration(participant: int) -> dict:
     baseline = 30
@@ -114,9 +101,7 @@ def _load_calibration(participant: int) -> dict:
         return default
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Main orchestrator
-# ═══════════════════════════════════════════════════════════════════════════
 
 def run_experiment_logic(
     args,
@@ -139,7 +124,7 @@ def run_experiment_logic(
     mock_nav     = args.mock_navigate
     metric_depth = (not args.relative) and torch.cuda.is_available()
 
-    # ── PipelineConfig (Change 6: FP16 auto-enabled on CUDA) ─────────────
+    # PipelineConfig (Change 6: FP16 auto-enabled on CUDA)
     cfg = PipelineConfig(
         participant       = participant,
         condition         = condition,
@@ -157,10 +142,10 @@ def run_experiment_logic(
     # Ensure output directory exists
     Path(cfg.output_path).mkdir(parents=True, exist_ok=True)
 
-    # ── Calibration ───────────────────────────────────────────────────────
+    # Calibration
     intensities = _load_calibration(participant)
 
-    # ── Feedback devices ──────────────────────────────────────────────────
+    # Feedback devices
     devices: list = []
 
     if custom_belt is not None:
@@ -195,7 +180,7 @@ def run_experiment_logic(
             raw = _VirtualBraceletAdapter(belt_ctrl, intensities, navigation_type=1)
             devices.append(raw)
 
-    # ── Pipeline ──────────────────────────────────────────────────────────
+    # Pipeline
     pipeline = VisionPipeline(
         cfg                               = cfg,
         mcp_queue                         = mcp_queue or queue.Queue(),
@@ -207,7 +192,7 @@ def run_experiment_logic(
         latest_frame_ref                  = latest_frame_ref or {'img': None},
     )
 
-    # ── Run ───────────────────────────────────────────────────────────────
+    # Run
     if deployment_mode:
         # Server / headless mode: pipeline runs in background threads,
         # calling thread blocks here until pipeline stops.
@@ -232,9 +217,7 @@ def run_experiment_logic(
         runner.run()   # blocks until done; pipeline.stop() called inside
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Standalone entry point
-# ═══════════════════════════════════════════════════════════════════════════
 
 class _DefaultArgs:
     """Fallback args when called from server_main without argparse."""

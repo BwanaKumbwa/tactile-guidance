@@ -2,8 +2,6 @@
 
 ## Target Management
 
-## Target Management (UPDATED)
-
 ### `set_target_with_fuzzy_match(target_name: str)` [SINGLE TARGET]
 **Purpose:** Set a SINGLE target with automatic speech-to-text correction
 **When to use:** 
@@ -56,6 +54,17 @@
 - User says "I got it", "I have it", "I grasped it", "I have the cup"
 - User confirms successful grasp
 **Example:** User: "I got the cup" → Call `grasp_complete()` → Respond: "Great! Target cleared."
+
+### `get_current_target_list()`
+**Purpose:** Get the current target list and list mode (ordered/unordered).
+**When to use:**
+- User asks about what objects are currently in the target list.
+- User asks what is the current target.
+
+### `get_grasped_objects_history()`
+**Purpose:** Get the list of previously grasped objects from memory.
+**When to use:**
+- User asks "What have I already grasped?" or "Show my progress"
 
 ## Object Detection (PRIMARY)
 ### `get_visible_objects()`

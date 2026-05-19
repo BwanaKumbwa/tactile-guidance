@@ -345,6 +345,8 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
             tts.language = Locale.US
+            //tts.setPitch(0.6f)           // Lower pitch (0.5-2.0, default 1.0)
+            //tts.setSpeechRate(0.9f)      // Slightly slower (0.5-2.0, default 1.0)
             tts.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) {}
 

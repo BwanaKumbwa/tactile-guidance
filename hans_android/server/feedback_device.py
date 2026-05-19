@@ -1,30 +1,3 @@
-"""
-feedback_device.py
-🟡 FeedbackDevice abstraction layer.
-
-Introduces a protocol/interface that any assistive output device must
-implement, so the vision pipeline in controller.py does not need to know
-whether it is driving a bracelet, a bone-conduction headset, a vibrating
-shoe, a second belt, or a mock device for testing.
-
-Usage in master.py:
-    from feedback_device import BraceletAdapter, VirtualBeltAdapter
-
-    devices = []
-    bracelet = BraceletAdapter(intensities, navigation_type=1)
-    if bracelet.connect():
-        devices.append(bracelet)
-    if args.enable_audio:
-        audio = SpatialAudioAdapter()
-        if audio.connect():
-            devices.append(audio)
-
-    task_controller = TaskController(
-        feedback_devices=devices,   # replaces belt_controller + bracelet_controller
-        ...
-    )
-"""
-
 from __future__ import annotations
 
 import math
@@ -36,10 +9,7 @@ from typing import Optional
 
 import numpy as np
 
-
-# ---------------------------------------------------------------------------
 # NavigationContext — device-agnostic navigation snapshot
-# ---------------------------------------------------------------------------
 
 @dataclass
 class NavigationContext:
@@ -73,9 +43,7 @@ class NavigationContext:
     frame_shape:          tuple                = (640, 640)
 
 
-# ---------------------------------------------------------------------------
 # FeedbackDevice — abstract interface
-# ---------------------------------------------------------------------------
 
 class FeedbackDevice(ABC):
     """
@@ -130,9 +98,7 @@ class FeedbackDevice(ABC):
         ...
 
 
-# ---------------------------------------------------------------------------
 # BraceletAdapter — wraps existing BraceletController behind the interface
-# ---------------------------------------------------------------------------
 
 class BraceletAdapter(FeedbackDevice):
     """
@@ -148,7 +114,7 @@ class BraceletAdapter(FeedbackDevice):
         self._belt = None
         self._connected = False
 
-    # -- Lifecycle ---------------------------------------------------------
+    # Lifecycle
 
     def connect(self) -> bool:
         success, self._belt = self._connect_belt()
@@ -164,7 +130,7 @@ class BraceletAdapter(FeedbackDevice):
                 pass
         self._connected = False
 
-    # -- Core interface ----------------------------------------------------
+    # Core interface
 
     def update(self, ctx: NavigationContext) -> Optional[object]:
         """Proxy to navigate_hand; returns curr_target for visualisation."""
@@ -215,7 +181,7 @@ class BraceletAdapter(FeedbackDevice):
             'battery':   None
         }
 
-    # -- Passthrough props the rest of controller.py still uses -----------
+    # Passthrough props the rest of controller.py still uses
 
     @property
     def vibrate(self) -> bool:
@@ -234,9 +200,7 @@ class BraceletAdapter(FeedbackDevice):
         self._bc.mock_navigate = v
 
 
-# ---------------------------------------------------------------------------
 # SpatialAudioAdapter — skeleton for a bone-conduction / earphone device
-# ---------------------------------------------------------------------------
 
 class SpatialAudioAdapter(FeedbackDevice):
     """
@@ -301,9 +265,7 @@ class SpatialAudioAdapter(FeedbackDevice):
         return {'connected': self._connected, 'type': 'audio', 'battery': None}
 
 
-# ---------------------------------------------------------------------------
 # MockDevice — for unit tests and CI (no hardware required)
-# ---------------------------------------------------------------------------
 
 class MockFeedbackDevice(FeedbackDevice):
     """Records all calls; useful for testing pipeline logic without hardware."""
