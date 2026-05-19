@@ -58,18 +58,10 @@ def map_obstacles(handBB, targetBB, depth_map, metric, deployment_mode="deployme
 
     # Dilate obstacles
     expanded_obstacle_mask = cv2.dilate(obstacle_mask.astype(np.uint8), np.ones((obstacles_dilation, obstacles_dilation), np.uint8))
-    #depth_map[expanded_obstacle_mask > 0] = hand_depth - 5
 
     mask_rgb = cv2.cvtColor(expanded_obstacle_mask.astype(np.uint8) * 255, cv2.COLOR_GRAY2BGR)
-    #cv2.imshow("expanded_obstacle_mask", mask_rgb)
-    #cv2.setWindowProperty("expanded_obstacle_mask", cv2.WND_PROP_TOPMOST, 1)
-    #pressed_key = cv2.waitKey(1)
+
     pressed_key = -1
-    #if deployment_mode == "testing" and threading.current_thread() is threading.main_thread():
-    #    try:
-    #        pressed_key = cv2.waitKey(1)
-    #    except Exception as e:
-    #        print(f"[Warning] Could not call cv2.waitKey: {e}")
 
     return expanded_obstacle_mask
 
@@ -88,8 +80,6 @@ def check_obstacles_between_points(handBB, targetBB, depth_map, depth_threshold)
     """
     
     # Get BB information
-    #hand_x, hand_y = handBB[:2]
-    #target_x, target_y = targetBB[:2]
     xc_hand, yc_hand = handBB[:2]
     xc_target, yc_target = targetBB[:2]
 
@@ -101,9 +91,6 @@ def check_obstacles_between_points(handBB, targetBB, depth_map, depth_threshold)
 
     try:
         mask_rgb = cv2.cvtColor(roi_depth_map.astype(np.uint8) * 255, cv2.COLOR_GRAY2BGR)
-        #cv2.imshow("roi_depth_map", mask_rgb)
-        #cv2.setWindowProperty("roi_depth_map", cv2.WND_PROP_TOPMOST, 1)
-        #pressed_key = cv2.waitKey(1)
     except:
         pass
 
@@ -151,9 +138,6 @@ def find_obstacle_target_point(handBB, targetBB, obstacle_map, leeway=10):
 
     roi_min_y = np.min(np.argwhere(roi_target_point)[:, 0])
 
-    #if roi_min_y <= 5:
-    #    return targetBB[:2], roi_min_y
-
     # Find corners of obstacles
     dst = cv2.cornerHarris(roi_target_point, 2, 3, 0.04)
     dst = cv2.dilate(dst, None)
@@ -170,9 +154,6 @@ def find_obstacle_target_point(handBB, targetBB, obstacle_map, leeway=10):
     min_x = np.min(corner_indices[:, 1]) + leeway
     max_x = np.max(corner_indices[:, 1]) + leeway
 
-    #min_x = corner_indices[corner_indices[:, 0] == min_y, 1].min()
-    #max_x = corner_indices[corner_indices[:, 0] == min_y, 1].max()
-
     # Determine target point based on direction
     target_point = [max_x, min_y] if direction == 'left' else [min_x, min_y]
     roi_rgb = cv2.cvtColor(roi_target_point.astype(np.uint8) * 255, cv2.COLOR_GRAY2BGR)
@@ -180,9 +161,6 @@ def find_obstacle_target_point(handBB, targetBB, obstacle_map, leeway=10):
     for candidate in corner_indices:
         cv2.circle(roi_rgb, (candidate[1], candidate[0]), radius=1, color=(0, 255, 0), thickness=-1)
     cv2.circle(roi_rgb, (target_point[0], target_point[1]), radius=5, color=(0, 0, 255), thickness=-1)
-    #cv2.imshow("ROI", roi_rgb)
-    #cv2.setWindowProperty("ROI", cv2.WND_PROP_TOPMOST, 1)
-    #pressed_key = cv2.waitKey(1)
 
     angle_radians = np.arctan2(yc_hand - target_point[1], target_point[0] - xc_hand) # inverted y-axis
     angle = np.degrees(angle_radians) % 360
