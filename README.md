@@ -1,4 +1,4 @@
-# HANS - Automated Hand Guidance System
+# HANS - Automated Hand Navigation System
 
 An AI-powered assistive technology system that enables blind users to autonomously grasp objects using tactile feedback guidance via a wearable bracelet. The system combines real-time vision processing (YOLOv5 object detection & StrongSORT tracking) with intelligent haptic navigation through a tactile interface.
 
@@ -99,11 +99,11 @@ LICENSE
      ┌────────────▼─────────────────────────────────────┐
      │      master.py (Orchestrator)                    │
      │  - Pipeline initialization                       │
-     │  - Deployment vs. Research mode selection         │
-     │  - Device connection management                   │
+     │  - Deployment vs. Research mode selection        │
+     │  - Device connection management                  │
      └────────────┬───────────────────────────────────┬─┘
                   │                                   │
-      ┌───────────▼──────────┐            ┌──────────▼────────┐
+      ┌───────────▼──────────┐            ┌──────────▼─────────┐
       │ VisionPipeline       │            │  ExperimentRunner  │
       │ (12 processing       │            │  (Trial state      │
       │  stages)             │            │   machine + CSV)   │
@@ -118,13 +118,13 @@ LICENSE
       │ 8. WebSocket publish │
       └───────────┬──────────┘
                   │
-      ┌───────────▼──────────────────┐
-      │   BraceletController         │
-      │  - Hand→target guidance      │
+      ┌───────────▼─────────────────────┐
+      │   BraceletController            │
+      │  - Hand→target guidance         │
       │  - Vibration pattern generation │
-      │  - 200ms BLE throttle         │
-      │  - 1.5s post-grasp cooldown   │
-      └───────────┬──────────────────┘
+      │  - 200ms BLE throttle           │
+      │  - 1.5s post-grasp cooldown     │
+      └───────────┬─────────────────────┘
                   │ Haptic commands
                   ▼
       ┌──────────────────────────┐
