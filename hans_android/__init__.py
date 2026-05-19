@@ -1,13 +1,10 @@
-"""HANS - Automated Hand Guidance System for blind users.
+"""HANS - Automated Hand Navigation System for blind users.
 
 Architecture:
   - Server: Python-based vision pipeline, object tracking, haptic control
   - Auditory Interface: MCP server + Android communication bridge
   - Android Client: Kotlin app connecting to the server
 """
-
-__version__ = "1.0.0-beta.1"
-__author__ = "Your Team"
 
 # Lightweight modules (safe to import at top level)
 try:
