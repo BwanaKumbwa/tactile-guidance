@@ -153,7 +153,6 @@ LICENSE
 
 ```bash
 git clone <repository-url>
-cd hans_android
 ```
 
 2. **Create conda environment**
