@@ -524,6 +524,9 @@ class VisionPipeline:
             if prev_frames is not None and len(outputs) > 0:
                 g1 = cv2.cvtColor(curr_frames, cv2.COLOR_BGR2GRAY)
                 g2 = cv2.cvtColor(prev_frames, cv2.COLOR_BGR2GRAY)
+                if g1.shape != g2.shape:
+                    # Resize depth to match RGB - TO UPDATE
+                    g2 = cv2.resize(g2, (g1.shape[1], g1.shape[0]))
                 if np.mean(cv2.absdiff(g1, g2)) > 30:
                     outputs = []
 

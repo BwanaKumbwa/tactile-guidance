@@ -48,7 +48,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
     // =================================================================
     // CONFIGURATION
     // =================================================================
-    private val SERVER_IP = "192.168.1.16" // UPDATE
+    private val SERVER_IP = "" // UPDATE
     private val WEBSOCKET_URL = "ws://$SERVER_IP:8000/ws/video"
     private val COMMAND_URL = "http://$SERVER_IP:8000/api/command"
     private val WAKE_WORD = "hans"
