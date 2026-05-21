@@ -112,7 +112,7 @@
         android:textSize="16sp"
         android:backgroundTint="#CC2196F3"
         android:elevation="30dp"
-        android:layout_marginBottom="50dp"
+        android:layout_marginBottom="100dp"
         app:layout_constraintBottom_toBottomOf="@id/bottomBar"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>
