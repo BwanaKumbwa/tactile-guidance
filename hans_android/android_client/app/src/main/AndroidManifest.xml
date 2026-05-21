@@ -33,8 +33,17 @@
 
         <meta-data android:name="com.google.ar.core" android:value="required" />
 
+        <activity android:name=".MainActivity" />
+        <activity android:name=".BluetoothActivity" />
+        <activity android:name=".BluetoothConnectedActivity" />
+        <activity android:name=".BluetoothNotConnectedActivity" />
+        <activity android:name=".IntensityActivity" />
+        <activity android:name=".PatternActivity" />
+        <activity android:name=".SettingsActivity" />
+        <activity android:name=".FullIntensityActivity" />
+
         <activity
-            android:name=".MainActivity"
+            android:name=".HomescreenActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

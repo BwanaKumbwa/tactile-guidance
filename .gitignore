@@ -143,6 +143,7 @@ dmypy.json
 # Project specific directories and files
 hans_android/results
 hans_android/server/results
+hans_android/server/results/*
 
 # .env files for environment variables
 *.env
