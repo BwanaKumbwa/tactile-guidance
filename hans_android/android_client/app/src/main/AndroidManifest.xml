@@ -19,7 +19,13 @@
     <uses-permission android:name="android.permission.BLUETOOTH" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
 
+    <!-- ARCore (optional for noArcore flavor) -->
+    <uses-feature
+        android:name="android.hardware.camera.ar"
+        android:required="false" />
+
     <application
+        android:name=".HansApplication"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -31,9 +37,30 @@
         android:usesCleartextTraffic="true"
         tools:targetApi="31">
 
-        <meta-data android:name="com.google.ar.core" android:value="required" />
+        <meta-data android:name="com.google.ar.core" android:value="optional" />
 
-        <activity android:name=".MainActivity" />
+        <!-- SPLASH ACTIVITY (LAUNCHER) -->
+        <activity
+            android:name=".SplashActivity"
+            android:exported="true"
+            android:theme="@style/Theme.AppCompat.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- HOME SCREEN (launched after splash) -->
+        <activity
+            android:name=".HomescreenActivity"
+            android:exported="true" />
+
+        <!-- MAIN ACTIVITY -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true" />
+
+        <!-- OTHER ACTIVITIES -->
         <activity android:name=".BluetoothActivity" />
         <activity android:name=".BluetoothConnectedActivity" />
         <activity android:name=".BluetoothNotConnectedActivity" />
@@ -42,14 +69,6 @@
         <activity android:name=".SettingsActivity" />
         <activity android:name=".FullIntensityActivity" />
 
-        <activity
-            android:name=".HomescreenActivity"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
     </application>
 
 </manifest>
