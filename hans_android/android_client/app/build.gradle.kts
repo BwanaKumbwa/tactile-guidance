@@ -20,6 +20,22 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // Flavor configuration
+    flavorDimensions.add("arcore")
+    
+    productFlavors {
+        create("withArcore") {
+            dimension = "arcore"
+            applicationIdSuffix = ".arcore"
+            versionNameSuffix = "-arcore"
+        }
+        create("noArcore") {
+            dimension = "arcore"
+            applicationIdSuffix = ".noarcore"
+            versionNameSuffix = "-noarcore"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -50,7 +66,7 @@ dependencies {
     implementation("com.google.android.material:material:1.11.0")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
 
-    // --- CameraX ---
+    // --- CameraX (needed for BOTH flavors) ---
     val camerax_version = "1.3.1"
     implementation("androidx.camera:camera-core:${camerax_version}")
     implementation("androidx.camera:camera-camera2:${camerax_version}")
@@ -63,6 +79,10 @@ dependencies {
     // --- JSON ---
     implementation("org.json:json:20210307")
 
-    // --- ARCore ---
-    implementation("com.google.ar:core:1.41.0")
+    // ===== Flavor-specific dependencies =====
+    // ARCore only for withArcore flavor
+    "withArcoreImplementation"("com.google.ar:core:1.41.0")
+    
+    // OpenGL for withArcore (needed for GLSurfaceView)
+    "withArcoreImplementation"("androidx.core:core-ktx:1.12.0")
 }

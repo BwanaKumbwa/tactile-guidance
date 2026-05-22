@@ -112,20 +112,18 @@ class ExperimentRunner:
                         break
                 continue
 
-            # Show frame (optionally side-by-side with depth map)
+            # Show frame (always with depth map, even if it's empty/black)
             im0 = item.annotated_im0
-            if item.depth_img is not None:
-                view = self._pipeline.depth_side_by_side(im0, item.depth_img)
-                cv2.imshow('AIBox & Depth', view)
-            else:
-                cv2.imshow('AIBox', im0)
-                cv2.setWindowProperty('AIBox', cv2.WND_PROP_TOPMOST, 1)
+            view = self._pipeline.depth_side_by_side(im0, item.depth_img) \
+                if item.depth_img is not None else im0
+            
+            cv2.imshow('AIBox & Depth', view)
+            cv2.setWindowProperty('AIBox & Depth', cv2.WND_PROP_TOPMOST, 1)
 
             key = cv2.waitKey(1)
             if key != -1:
                 if self._handle_key(key) == 'quit':
                     break
-
     # Key handler
 
     def _handle_key(self, key: int) -> Optional[str]:

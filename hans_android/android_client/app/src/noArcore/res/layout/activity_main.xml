@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/rootLayout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <!-- Camera Preview -->
+    <androidx.camera.view.PreviewView
+        android:id="@+id/viewFinder"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <com.example.hans.OverlayView
+        android:id="@+id/overlayView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- Status Overlay -->
+    <TextView
+        android:id="@+id/tvStatus"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="50dp"
+        android:layout_marginStart="16dp"
+        android:background="#80000000"
+        android:padding="8dp"
+        android:text="Status: Disconnected"
+        android:textColor="#FFFFFF"
+        android:textSize="14sp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <!-- AI Response Overlay -->
+    <TextView
+        android:id="@+id/tvAiResponse"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="20dp"
+        android:layout_marginBottom="50dp"
+        android:background="#AA000000"
+        android:padding="16dp"
+        android:text="Waiting for command..."
+        android:textColor="#00FF00"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/bottomBar"/>
+
+    <!-- Manual Listen Button -->
+    <View
+        android:id="@+id/bottomBar"
+        android:layout_width="0dp"
+        android:layout_height="100dp"
+        android:background="#4EB92B"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"/>
+
+    <ImageView
+        android:id="@+id/Home"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginStart="60dp"
+        android:layout_marginBottom="40dp"
+        android:alpha="0.5"
+        android:clickable="true"
+        android:focusable="true"
+        android:src="@drawable/home"
+        app:layout_constraintBottom_toBottomOf="@id/bottomBar"
+        app:layout_constraintStart_toStartOf="parent" />
+
+    <ImageView
+        android:id="@+id/Setting"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginEnd="60dp"
+        android:layout_marginBottom="40dp"
+        android:alpha="0.5"
+        android:clickable="true"
+        android:focusable="true"
+        android:src="@drawable/setting"
+        app:layout_constraintBottom_toBottomOf="@id/bottomBar"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <ImageView
+        android:id="@+id/Camera_command"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginBottom="40dp"
+        android:clickable="true"
+        android:focusable="true"
+        android:src="@drawable/camera"
+        app:layout_constraintBottom_toBottomOf="@id/bottomBar"
+        app:layout_constraintStart_toEndOf="@id/Home"
+        app:layout_constraintEnd_toStartOf="@id/Setting" />
+
+    <Button
+        android:id="@+id/btnPtt"
+        android:layout_width="220dp"
+        android:layout_height="60dp"
+        android:text="Hold to Speak"
+        android:textColor="@android:color/white"
+        android:textSize="16sp"
+        android:backgroundTint="#CC2196F3"
+        android:elevation="30dp"
+        android:layout_marginBottom="100dp"
+        app:layout_constraintBottom_toBottomOf="@id/bottomBar"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"/>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

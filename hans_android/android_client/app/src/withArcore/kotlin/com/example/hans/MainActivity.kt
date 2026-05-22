@@ -48,7 +48,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
     // =================================================================
     // CONFIGURATION
     // =================================================================
-    private val SERVER_IP = "192.168.1.16" // UPDATE
+    private val SERVER_IP = "" // UPDATE
     private val WEBSOCKET_URL = "ws://$SERVER_IP:8000/ws/video"
     private val COMMAND_URL = "http://$SERVER_IP:8000/api/command"
     private val WAKE_WORD = "hans"
@@ -169,24 +169,89 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
     // =================================================================
     // ARCORE LIFECYCLE
     // =================================================================
+    private fun processArFrame(frame: Frame) {
+        if (webSocket == null) return
+
+        var rgbImage: Image? = null
+        var depthImage: Image? = null
+
+        try {
+            rgbImage = frame.acquireCameraImage()
+
+            try {
+                depthImage = frame.acquireDepthImage16Bits()
+            } catch (e: Exception) {
+                // Depth not ready yet — log once
+                Log.d("HANS", "Depth initializing... move phone around to help")
+            }
+
+            val rgbBytes = yuvImageToJpegBytes(rgbImage, 640)
+
+            var depthBytes = ByteArray(0)
+            if (depthImage != null) {
+                depthBytes = depth16ToPngBytes(depthImage)
+                
+                // Only send if depth has actual data (not all zeros)
+                val hasDepthData = depthBytes.size > 100 && !isDepthAllZeros(depthBytes)
+                if (!hasDepthData) {
+                    Log.d("HANS", "Depth detected but empty, waiting...")
+                    depthBytes = ByteArray(0) // Fall back to empty
+                }
+            }
+
+            // Protocol: [4 bytes: RGB length][RGB bytes][Depth bytes]
+            val buffer = ByteBuffer.allocate(4 + rgbBytes.size + depthBytes.size)
+            buffer.putInt(rgbBytes.size)
+            buffer.put(rgbBytes)
+            buffer.put(depthBytes)
+
+            webSocket?.send(buffer.array().toByteString(0, buffer.capacity()))
+
+        } catch (e: Exception) {
+            Log.e("HANS", "Frame processing failed", e)
+        } finally {
+            rgbImage?.close()
+            depthImage?.close()
+        }
+    }
+
+    private fun isDepthAllZeros(depthBytes: ByteArray): Boolean {
+        // Sample the middle of the depth frame
+        val sampleSize = minOf(1000, depthBytes.size)
+        val sample = depthBytes.takeLast(sampleSize)
+        return sample.all { it == 0.toByte() }
+    }
+
     override fun onResume() {
         super.onResume()
+        
+        // Try to get the pre-warmed session first (with type cast)
+        val prewarmSession = ArCoreManager.resume()
+        if (prewarmSession != null) {
+            @Suppress("UNCHECKED_CAST")
+            arSession = prewarmSession as? Session
+        }
+        
+        // Fallback: if warmup didn't complete yet, initialize normally
         if (arSession == null && allPermissionsGranted()) {
             try {
                 if (ArCoreApk.getInstance().requestInstall(this, true) == ArCoreApk.InstallStatus.INSTALLED) {
                     arSession = Session(this)
                     val config = Config(arSession)
+                    
                     if (arSession!!.isDepthModeSupported(Config.DepthMode.AUTOMATIC)) {
                         config.depthMode = Config.DepthMode.AUTOMATIC
-                        Log.i("HANS", "ARCore Depth Mode Enabled")
+                        Log.i("HANS", "ARCore Depth Mode Enabled (fallback init)")
                     }
                     config.updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
+                    config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
                     arSession!!.configure(config)
                 }
             } catch (e: Exception) {
-                Log.e("HANS", "ARCore Unavailable: $e")
+                Log.e("HANS", "ARCore fallback init failed: $e")
             }
         }
+        
         try {
             arSession?.resume()
             surfaceView.onResume()
@@ -197,10 +262,8 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
 
     override fun onPause() {
         super.onPause()
-        if (arSession != null) {
-            surfaceView.onPause()
-            arSession!!.pause()
-        }
+        ArCoreManager.pause()
+        surfaceView.onPause()
     }
 
     // =================================================================
@@ -239,44 +302,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
     // =================================================================
     // MULTIPLEXED DATA SENDER (RGB + DEPTH)
     // =================================================================
-    private fun processArFrame(frame: Frame) {
-        if (webSocket == null) return
-
-        var rgbImage: Image? = null
-        var depthImage: Image? = null
-
-        try {
-            rgbImage = frame.acquireCameraImage()
-
-            try {
-                depthImage = frame.acquireDepthImage16Bits()
-            } catch (e: Exception) {
-                // Depth not ready on first frames — safe to ignore
-            }
-
-            val rgbBytes = yuvImageToJpegBytes(rgbImage, 640)
-
-            var depthBytes = ByteArray(0)
-            if (depthImage != null) {
-                depthBytes = depth16ToPngBytes(depthImage)
-            }
-
-            // Protocol: [4 bytes: RGB length][RGB bytes][Depth bytes]
-            val buffer = ByteBuffer.allocate(4 + rgbBytes.size + depthBytes.size)
-            buffer.putInt(rgbBytes.size)
-            buffer.put(rgbBytes)
-            buffer.put(depthBytes)
-
-            webSocket?.send(buffer.array().toByteString(0, buffer.capacity()))
-
-        } catch (e: Exception) {
-            Log.e("HANS", "Frame processing failed", e)
-        } finally {
-            rgbImage?.close()
-            depthImage?.close()
-        }
-    }
-
     private fun yuvImageToJpegBytes(image: Image, targetWidth: Int): ByteArray {
         val yBuffer = image.planes[0].buffer
         val uBuffer = image.planes[1].buffer
@@ -829,6 +854,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
 
     override fun onDestroy() {
         super.onDestroy()
+        ArCoreManager.destroy()
         webSocket?.close(1000, "App closed")
         braceletManager.disconnect()
         beltManager.disconnect()
