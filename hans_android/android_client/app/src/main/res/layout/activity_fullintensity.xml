@@ -1,0 +1,236 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/white">
+
+    <!-- Title -->
+    <TextView
+        android:id="@+id/textIntensity"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/intensity"
+        android:textSize="25sp"
+        android:textStyle="bold"
+        android:textColor="@color/black"
+        android:layout_marginTop="100dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"/>
+
+    <!-- TOP INTENSITY -->
+    <TextView
+        android:id="@+id/topLabel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Top"
+        android:textSize="24sp"
+        android:textStyle="bold"
+        app:layout_constraintTop_toBottomOf="@id/textIntensity"
+        app:layout_constraintStart_toStartOf="parent"
+        android:layout_marginStart="30dp"
+        android:layout_marginTop="50dp"/>
+
+    <SeekBar
+        android:id="@+id/seekTop"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="30dp"
+        android:layout_marginEnd="80dp"
+        android:max="100"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="1.0"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/topLabel" />
+
+    <EditText
+        android:id="@+id/topValue"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:inputType="number"
+        android:text="0"
+        android:textSize="24sp"
+        app:layout_constraintTop_toTopOf="@id/seekTop"
+        app:layout_constraintBottom_toBottomOf="@id/seekTop"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginEnd="30dp"/>
+
+
+    <!-- RIGHT INTENSITY -->
+    <TextView
+        android:id="@+id/rightLabel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Right"
+        android:textSize="24sp"
+        android:textStyle="bold"
+        app:layout_constraintTop_toBottomOf="@id/seekTop"
+        app:layout_constraintStart_toStartOf="parent"
+        android:layout_marginStart="30dp"
+        android:layout_marginTop="50dp"/>
+
+    <SeekBar
+        android:id="@+id/seekRight"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:max="100"
+        app:layout_constraintTop_toBottomOf="@id/rightLabel"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginStart="30dp"
+        android:layout_marginEnd="80dp"/>
+
+    <EditText
+        android:id="@+id/rightValue"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:inputType="number"
+        android:text="0"
+        android:textSize="24sp"
+        app:layout_constraintTop_toTopOf="@id/seekRight"
+        app:layout_constraintBottom_toBottomOf="@id/seekRight"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginEnd="30dp"/>
+
+    <!-- BOTTOM INTENSITY -->
+    <TextView
+        android:id="@+id/bottomLabel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Bottom"
+        android:textSize="24sp"
+        android:textStyle="bold"
+        app:layout_constraintTop_toBottomOf="@id/seekRight"
+        app:layout_constraintStart_toStartOf="parent"
+        android:layout_marginStart="30dp"
+        android:layout_marginTop="50dp"/>
+
+    <SeekBar
+        android:id="@+id/seekBottom"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:max="100"
+        app:layout_constraintTop_toBottomOf="@id/bottomLabel"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginStart="30dp"
+        android:layout_marginEnd="80dp"/>
+
+    <EditText
+        android:id="@+id/bottomValue"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:inputType="number"
+        android:text="0"
+        android:textSize="24sp"
+        app:layout_constraintTop_toTopOf="@id/seekBottom"
+        app:layout_constraintBottom_toBottomOf="@id/seekBottom"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginEnd="30dp"/>
+
+
+    <!-- LEFT INTENSITY -->
+    <TextView
+        android:id="@+id/leftLabel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Left"
+        android:textSize="24sp"
+        android:textStyle="bold"
+        app:layout_constraintTop_toBottomOf="@id/seekBottom"
+        app:layout_constraintStart_toStartOf="parent"
+        android:layout_marginStart="30dp"
+        android:layout_marginTop="50dp"/>
+
+    <SeekBar
+        android:id="@+id/seekLeft"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:max="100"
+        app:layout_constraintTop_toBottomOf="@id/leftLabel"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginStart="30dp"
+        android:layout_marginEnd="80dp"/>
+
+    <EditText
+        android:id="@+id/leftValue"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:inputType="number"
+        android:text="0"
+        android:textSize="24sp"
+        app:layout_constraintTop_toTopOf="@id/seekLeft"
+        app:layout_constraintBottom_toBottomOf="@id/seekLeft"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginEnd="30dp"/>
+
+
+    <!-- Select Button -->
+    <Button
+        android:id="@+id/button_select_intensity"
+        android:layout_width="250dp"
+        android:layout_height="80dp"
+        android:text="@string/select_intensity"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:textColor="@color/black"
+        android:backgroundTint="#93EF73"
+        app:layout_constraintBottom_toTopOf="@id/bottomBar"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginBottom="70dp"/>
+
+
+    <!-- Bottom Bar -->
+    <View
+        android:id="@+id/bottomBar"
+        android:layout_width="0dp"
+        android:layout_height="100dp"
+        android:background="#4EB92B"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"/>
+
+    <ImageView
+        android:id="@+id/Home"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginStart="60dp"
+        android:layout_marginBottom="40dp"
+        android:alpha="0.5"
+        android:clickable="true"
+        android:focusable="true"
+        android:src="@drawable/home"
+        app:layout_constraintBottom_toBottomOf="@id/bottomBar"
+        app:layout_constraintStart_toStartOf="parent" />
+
+    <ImageView
+        android:id="@+id/Setting"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginEnd="60dp"
+        android:layout_marginBottom="40dp"
+        android:clickable="true"
+        android:focusable="true"
+        android:src="@drawable/setting"
+        app:layout_constraintBottom_toBottomOf="@id/bottomBar"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <ImageView
+        android:id="@+id/Camera_command"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginBottom="40dp"
+        android:alpha="0.5"
+        android:clickable="true"
+        android:focusable="true"
+        android:src="@drawable/camera"
+        app:layout_constraintBottom_toBottomOf="@id/bottomBar"
+        app:layout_constraintStart_toEndOf="@id/Home"
+        app:layout_constraintEnd_toStartOf="@id/Setting" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

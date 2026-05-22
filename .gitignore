@@ -130,32 +130,20 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-
-
 ## PyCharm
-
 .idea/
+
+## VS Code
+.vscode/
 
 ## Git
 .DS_Store
 
 
 # Project specific directories and files
-flobox/resources/
-flobox/experiment/analysis/Ramon/
-flobox/experiment/forms/
-flobox/experiment/plots/
-flobox/experiment/Abrechnung_VPgelder.pdf
-flobox/experiment/Data_Analysis.zip
-aibox/midas/weights/
-aibox/example_gpu.sh
-aibox/UOS_HPC_Guide.md
-aibox/resources/datasets/
-aibox/resources/media/
-aibox/resources/old_code/
-aibox/experiment/forms/
-aibox/results/
-aibox/weights/
+hans_android/results
+hans_android/server/results
+hans_android/server/results/*
 
 # .env files for environment variables
 *.env

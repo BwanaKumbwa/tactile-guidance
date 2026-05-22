@@ -1,0 +1,62 @@
+{
+    "target_list": [],
+    "list_mode": "unordered",
+    "grasped_objects": [
+        "cup"
+    ],
+    "calibration": {
+        "bottom": 30,
+        "top": 30,
+        "left": 30,
+        "right": 30
+    },
+    "preferences": {
+        "speech_speed": "normal",
+        "verbosity": "low",
+        "battery_saver": false,
+        "play_welcome_message": true
+    },
+    "command_history": [],
+    "world_map": {
+        "myright": {
+            "location": "Middle Center, 0.88m",
+            "last_seen": "03:32:38 PM"
+        },
+        "myleft": {
+            "location": "Middle Center, 0.91m",
+            "last_seen": "03:32:37 PM"
+        },
+        "potted plant": {
+            "location": "Middle Center, 2.54m",
+            "last_seen": "12:50:40 AM"
+        },
+        "clock": {
+            "location": "Middle Center, 0.34m",
+            "last_seen": "01:12:37 PM"
+        },
+        "cup": {
+            "location": "Middle Center, 0.51m",
+            "last_seen": "01:17:55 PM"
+        },
+        "bottle": {
+            "location": "Middle Center, 0.35m",
+            "last_seen": "01:12:57 PM"
+        },
+        "apple": {
+            "location": "Middle Center, 0.53m",
+            "last_seen": "01:12:25 PM"
+        },
+        "bowl": {
+            "location": "Middle Right, 0.81m",
+            "last_seen": "01:12:56 PM"
+        },
+        "fork": {
+            "location": "Top Center, 0.86m",
+            "last_seen": "10:17:31 AM"
+        },
+        "wine glass": {
+            "location": "Middle Left, 0.55m",
+            "last_seen": "01:11:39 PM"
+        }
+    }
+}
