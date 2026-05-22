@@ -611,13 +611,16 @@ class VisionPipeline:
                        prev_outputs: np.ndarray) -> Tuple[list, Optional[np.ndarray]]:
         """
         Depth priority:
-          1. Hardware depth from Android phone  — always used when present (free).
-          2. ML depth estimator                 — only when use_ml_depth_fallback=True
-                                                  AND hw_depth is None.
-          3. Previous-frame propagation via track_id — free, always attempted last.
+        1. ML depth estimator (only if use_ml_depth_fallback=True, overrides hw_depth)
+        2. Hardware depth from Android phone — always used when fallback is disabled
+        3. Previous-frame propagation via track_id — free, always attempted last.
         """
         if not self._cfg.run_depth:
             return outputs, None
+        
+        # Force ML estimation when fallback mode is enabled
+        if self._cfg.use_ml_depth_fallback:
+            hw_depth = None  # Ignore hardware depth; use ML estimator instead
 
         # 1. Hardware path (ARCore / phone depth sensor)
         if hw_depth is not None:

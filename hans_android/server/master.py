@@ -123,6 +123,8 @@ def run_experiment_logic(
     condition    = args.condition
     mock_nav     = args.mock_navigate
     metric_depth = (not args.relative) and torch.cuda.is_available()
+    use_ml_depth_fallback = getattr(args, 'depth_fallback', False)
+    use_metric_depth      = getattr(args, 'metric_depth', False)
 
     # PipelineConfig (Change 6: FP16 auto-enabled on CUDA)
     cfg = PipelineConfig(
@@ -131,12 +133,9 @@ def run_experiment_logic(
         output_path       = f'results/{condition}/',
         run_tracker       = condition in ('multiple_objects', 'depth_navigation'),
         run_depth              = True,
-        use_ml_depth_fallback  = False,
-        metric_depth      = metric_depth,
+        use_ml_depth_fallback  = use_ml_depth_fallback,
+        metric_depth      = use_metric_depth,
         nosave            = not args.save_video,
-        # Change 6: leave use_fp16=True (default); PipelineConfig auto-disables on CPU
-        # Change 3: leave use_cuda_streams=True (default)
-        # Change 5: leave depth_* thresholds at their defaults
     )
 
     # Ensure output directory exists
@@ -244,6 +243,10 @@ if __name__ == '__main__':
                         help='Auto-mode: specify --targets; otherwise manual entry')
     parser.add_argument('--targets',       nargs='*', default=[],
                         help='Ordered list of COCO class names for auto-mode')
+    parser.add_argument('--depth-fallback', action='store_true',
+                        help='Enable ML-based depth estimation fallback')
+    parser.add_argument('--metric-depth', action='store_true',
+                        help='Use UniDepth instead of MiDaS')
     _args = parser.parse_args()
     _args.target_objs  = _args.targets
     _args.manual_entry = not _args.auto

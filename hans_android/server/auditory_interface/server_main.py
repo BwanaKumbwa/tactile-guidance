@@ -62,23 +62,44 @@ Examples:
         help="Enable debug logging"
     )
     
+    parser.add_argument(
+        "--depth-fallback",
+        action="store_true",
+        help="Enable ML-based depth estimation as fallback (noArcore only)"
+    )
+    
+    parser.add_argument(
+        "--metric-depth",
+        action="store_true",
+        help="Use UniDepth (metric) instead of MiDaS (faster but relative). Only with --depth-fallback"
+    )
+    
+
     return parser.parse_args()
 
 
 # Parse arguments at module load
 DEPLOYMENT_MODE = True
 DEBUG_MODE = False
+DEPTH_FALLBACK = False
+METRIC_DEPTH = False
 
 def init_config():
-    global DEPLOYMENT_MODE, DEBUG_MODE
+    global DEPLOYMENT_MODE, DEBUG_MODE, DEPTH_FALLBACK, METRIC_DEPTH
     args = parse_arguments()
     if args.mode == 'testing':
         DEPLOYMENT_MODE = False
     DEBUG_MODE = args.debug
+    DEPTH_FALLBACK = args.depth_fallback
+    METRIC_DEPTH = args.metric_depth
     
     print(f"🔧 Configuration:")
     print(f"   Visual Mode: {DEPLOYMENT_MODE}")
     print(f"   Debug Mode: {'ON' if DEBUG_MODE else 'OFF'}")
+    print(f"   Depth Fallback: {'ENABLED' if DEPTH_FALLBACK else 'DISABLED'}")
+    if DEPTH_FALLBACK:
+        depth_type = "UniDepth (metric)" if METRIC_DEPTH else "MiDaS (relative)"
+        print(f"   Depth Model: {depth_type}")
     print()
 
 # Initialize immediately
@@ -161,6 +182,8 @@ class SimArgs:
         self.relative = False
         self.mock_navigate = False
         self.save_video = False
+        self.depth_fallback = DEPTH_FALLBACK
+        self.metric_depth  = METRIC_DEPTH 
 
 def run_ai_logic():
     print("🧠 AI Vision Thread Started")
@@ -176,7 +199,7 @@ def run_ai_logic():
             custom_loader=android_loader,
             result_queue=result_queue,
             custom_belt=virtual_belt,
-            deployment_mode=DEPLOYMENT_MODE  # <--- ADD THIS LINE
+            deployment_mode=DEPLOYMENT_MODE
         )
     except Exception as e:
         print(f"❌ Error in AI Loop: {e}")
