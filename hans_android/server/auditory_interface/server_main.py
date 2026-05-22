@@ -1,0 +1,613 @@
+import os
+import signal
+import time
+import asyncio
+import cv2
+import numpy as np
+import base64
+import threading
+import queue
+import json
+import sys
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel
+from contextlib import asynccontextmanager
+from pathlib import Path
+import re
+import base64
+
+file = Path(__file__).resolve()
+root = file.parents[0] 
+for path in ['/yolov5', '/strongsort', '/unidepth', '/midas']:
+    if str(root) + path not in sys.path:
+        sys.path.append(str(root) + path)
+
+from android_loader import AndroidSource
+from virtual_belt import VirtualBeltController
+import master 
+from query_processing import HANSBrain
+from mcp.client.stdio import stdio_client
+from mcp import ClientSession
+from mcp_config import get_server_parameters, convert_mcp_to_openai_tools
+
+import argparse
+import sys
+
+# CLI arguments parser
+def parse_arguments():
+    parser = argparse.ArgumentParser(
+        description="HANS Server - Tactile bracelet guidance system for blind users",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python server_main.py                          # Run in deployment mode (no visualization)
+  python server_main.py --mode testing           # Run in testing mode (with visualization)
+  python server_main.py -m testing               # Short form
+        """
+    )
+    
+    parser.add_argument(
+        "--mode",
+        "-m",
+        type=str,
+        choices=["deployment", "testing"],
+        default="deployment",
+        help="Visual mode: 'deployment' (no window) or 'testing' (with OpenCV window). Default: deployment"
+    )
+    
+    parser.add_argument(
+        "--debug",
+        "-d",
+        action="store_true",
+        help="Enable debug logging"
+    )
+    
+    return parser.parse_args()
+
+
+# Parse arguments at module load
+DEPLOYMENT_MODE = True
+DEBUG_MODE = False
+
+def init_config():
+    global DEPLOYMENT_MODE, DEBUG_MODE
+    args = parse_arguments()
+    if args.mode == 'testing':
+        DEPLOYMENT_MODE = False
+    DEBUG_MODE = args.debug
+    
+    print(f"🔧 Configuration:")
+    print(f"   Visual Mode: {DEPLOYMENT_MODE}")
+    print(f"   Debug Mode: {'ON' if DEBUG_MODE else 'OFF'}")
+    print()
+
+# Initialize immediately
+init_config()
+
+# Shared state
+class SharedState:
+    """Thread-safe container updated by YOLO, read by MCP."""
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._current_target = "none"
+        self._visible_objects = []
+        self._available_classes = []
+        self._bracelet_connected = False
+        self._belt_connected = False
+        self._preferences = {"speech_speed": "normal", "verbosity": "normal"}
+        self._target_list = []
+        self._list_mode = "ordered"
+        self._memory_existed = False
+        self._world_map = {}
+
+    def set_target(self, target: str):
+        with self._lock: self._current_target = target
+    def get_target(self):
+        with self._lock: return self._current_target
+    def set_visible_objects(self, objects: list):
+        with self._lock: self._visible_objects = list(objects)
+    def get_visible_objects(self):
+        with self._lock: return list(self._visible_objects)
+    def set_available_classes(self, classes: list):
+        with self._lock: self._available_classes = list(classes)
+    def get_available_classes(self):
+        with self._lock: return list(self._available_classes)
+    def set_hardware_status(self, bracelet: bool, belt: bool):
+        with self._lock:
+            self._bracelet_connected = bracelet
+            self._belt_connected = belt
+    def get_hardware_status(self) -> dict:
+        with self._lock:
+            return {"bracelet": self._bracelet_connected, "belt": self._belt_connected}
+    def set_preferences(self, prefs: dict):
+        with self._lock: self._preferences = prefs
+    def get_preferences(self) -> dict:
+        with self._lock: return self._preferences
+    def set_target_list_state(self, target_list: list, mode: str):
+        with self._lock:
+            self._target_list = list(target_list)
+            self._list_mode = mode
+    def get_target_list_state(self) -> dict:
+        with self._lock:
+            return {"targets": list(self._target_list), "mode": self._list_mode}
+    def set_memory_existed(self, existed: bool):
+        with self._lock: self._memory_existed = existed
+    def get_memory_existed(self) -> bool:
+        with self._lock: return self._memory_existed
+    def update_world_map(self, new_data: dict):
+        with self._lock:
+            self._world_map.update(new_data)    
+    def get_world_map(self) -> dict:
+        with self._lock: 
+            return dict(self._world_map)
+
+shared_state = SharedState()
+
+# Global queues and state
+result_queue = queue.Queue(maxsize=10)
+frame_queue = queue.Queue(maxsize=1)
+mcp_queue = queue.Queue()
+latest_frame_ref = {"img": None}
+
+brain = HANSBrain()
+mcp_session_global = None
+openai_tools_global = []
+
+# Configuration
+class SimArgs:
+    def __init__(self):
+        self.participant = 1
+        self.condition = 'depth_navigation' # grasping, multiple_objects, depth_navigation
+        self.relative = False
+        self.mock_navigate = False
+        self.save_video = False
+
+def run_ai_logic():
+    print("🧠 AI Vision Thread Started")
+    android_loader = AndroidSource(frame_queue, img_size=640)
+    args = SimArgs()
+    virtual_belt = VirtualBeltController(result_queue)
+    
+    try:
+        master.run_experiment_logic(
+            args, 
+            mcp_queue=mcp_queue, 
+            shared_state=shared_state,
+            custom_loader=android_loader,
+            result_queue=result_queue,
+            custom_belt=virtual_belt,
+            deployment_mode=DEPLOYMENT_MODE  # <--- ADD THIS LINE
+        )
+    except Exception as e:
+        print(f"❌ Error in AI Loop: {e}")
+
+# Lifecycle (MCP startup)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global mcp_session_global, openai_tools_global
+    
+    # 1. Start YOLO Thread
+    threading.Thread(target=run_ai_logic, daemon=True).start()
+    
+    # 2. Start MCP Robustly in background task (won't crash FastAPI if it fails)
+    async def init_mcp():
+        global mcp_session_global, openai_tools_global
+        try:
+            print("--- Starting MCP Server Process ---")
+            server_params = get_server_parameters("server_hans.py")
+            async with stdio_client(server_params) as (read, write):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    mcp_tools = await session.list_tools()
+                    openai_tools_global = convert_mcp_to_openai_tools(mcp_tools)
+                    mcp_session_global = session
+                    print(f"✅ MCP Connected! Tools: {[t.name for t in mcp_tools.tools]}")
+                    
+                    await asyncio.Event().wait() # Keep connection open
+        except Exception as e:
+            print(f"❌ MCP Connection Failed: {e}")
+            print("⚠️ Server will run, but LLM Commands will be disabled.")
+
+            import traceback
+            traceback.print_exc()
+
+    mcp_task = asyncio.create_task(init_mcp())
+    yield
+    mcp_task.cancel()
+
+app = FastAPI(lifespan=lifespan)
+
+# Internal endpoints
+class InternalCommand(BaseModel):
+    instruction: str
+    value: str
+
+@app.post("/internal/command")
+def receive_internal_command(cmd: InternalCommand):
+    
+    if cmd.instruction == "shutdown":
+        # 1. Tell YOLO to break its loop and close resources
+        mcp_queue.put({"instruction": "stop", "value": ""})
+        # 2. Start the suicide timer for the Web Server
+        def shutdown_server():
+            import time, os, signal
+            time.sleep(3)
+            print("🛑 Shutting down FastAPI server...")
+            os.kill(os.getpid(), signal.SIGINT)
+        threading.Thread(target=shutdown_server, daemon=True).start()
+        
+    elif cmd.instruction == "disconnect":
+        # Don't kill the server! Just tell YOLO to clear its target.
+        # This effectively puts the AI into "Sleep Mode" waiting for the next connection.
+        mcp_queue.put({"instruction": "set_target", "value": "none"})
+        shared_state.set_target("none")
+        
+    else:
+        # Standard commands (set_target, pause, etc)
+        mcp_queue.put({"instruction": cmd.instruction, "value": cmd.value})
+        if cmd.instruction == "set_target":
+            shared_state.set_target(cmd.value)
+            
+    return {"status": "ok"}
+
+@app.get("/internal/state")
+def get_internal_state():
+    """server_hans.py calls this to read what YOLO sees and what the active goals are"""
+    list_state = shared_state.get_target_list_state()
+    return {
+        "target": shared_state.get_target(),
+        "visible_objects": shared_state.get_visible_objects(),
+        "available_classes": shared_state.get_available_classes(),
+        "target_list": list_state["targets"],
+        "list_mode": list_state["mode"],
+        "world_map": shared_state.get_world_map()
+    }
+
+@app.get("/internal/latest_frame")
+def get_latest_frame():
+    """Returns the most recent camera frame as a base64 encoded JPEG."""
+    frame = latest_frame_ref.get("img")
+    
+    if frame is None:
+        return {"status": "error", "message": "No frame available yet."}
+    
+    try:
+        # Encode the numpy array to a JPEG
+        _, buffer = cv2.imencode('.jpg', frame)
+        # Convert to a base64 string
+        b64_str = base64.b64encode(buffer).decode('utf-8')
+        return {"status": "ok", "image_b64": b64_str}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.get("/internal/get_crops")
+def get_crops(class_name: str):
+    frame = latest_frame_ref.get("img")
+    if frame is None: return {"status": "error", "message": "No frame"}
+    
+    # Get all visible objects of this type
+    objs = [o for o in shared_state.get_visible_objects() if o["name"] == class_name]
+    if not objs: return {"status": "error", "message": f"I don't see any {class_name}s right now."}
+    
+    crops = []
+    h_img, w_img = frame.shape[:2]
+    
+    for obj in objs:
+        xc, yc, w, h = obj["bbox"]
+        # Convert Center X/Y to Top-Left/Bottom-Right
+        x1 = max(0, int(xc - w/2))
+        y1 = max(0, int(yc - h/2))
+        x2 = min(w_img, int(xc + w/2))
+        y2 = min(h_img, int(yc + h/2))
+        
+        crop = frame[y1:y2, x1:x2]
+        if crop.size == 0: continue
+        
+        _, buffer = cv2.imencode('.jpg', crop)
+        crops.append({
+            "track_id": obj["track_id"],
+            "bbox": obj["bbox"],
+            "image_b64": base64.b64encode(buffer).decode('utf-8')
+        })
+        
+    return {"status": "ok", "crops": crops}
+
+@app.get("/internal/find_by_color")
+def find_by_color(class_name: str, color: str):
+    frame = latest_frame_ref.get("img")
+    if frame is None: return {"status": "error", "message": "No frame available."}
+    
+    objs = [o for o in shared_state.get_visible_objects() if o["name"] == class_name]
+    if not objs: return {"status": "not_found", "message": f"I don't see any {class_name}s."}
+
+    # Widened ranges for real-world indoor lighting (Saturation and Value lowered to 40)
+    color_dict = {
+        "blue":   [((90, 40, 40),  (140, 255, 255))],
+        "green":  [((35, 40, 40),  (85, 255, 255))],
+        "yellow": [((15, 40, 40),  (35, 255, 255))],
+        "orange": [((5, 50, 50),   (15, 255, 255))],
+        "purple": [((130, 40, 40), (170, 255, 255))],
+        "pink":   [((140, 40, 40), (170, 255, 255))],
+        "red":    [((0, 50, 50),   (10, 255, 255)), ((170, 50, 50), (180, 255, 255))],
+        "white":  [((0, 0, 150),   (180, 40, 255))],
+        "black":  [((0, 0, 0),     (180, 255, 50))],
+        "gray":   [((0, 0, 40),    (180, 40, 200))],
+        "brown":  [((10, 50, 20),  (20, 255, 200))]
+    }
+
+    color_key = color.lower().strip()
+    if color_key not in color_dict:
+        return {"status": "unsupported", "message": "Color not in quick-dictionary."}
+
+    best_score = 0
+    best_match = None
+    h_img, w_img = frame.shape[:2]
+
+    for obj in objs:
+        xc, yc, w, h = obj["bbox"]
+        
+        search_w, search_h = w * 0.5, h * 0.5
+        x1, y1 = max(0, int(xc - search_w/2)), max(0, int(yc - search_h/2))
+        x2, y2 = min(w_img, int(xc + search_w/2)), min(h_img, int(yc + search_h/2))
+        
+        crop = frame[y1:y2, x1:x2]
+        if crop.size == 0: continue
+
+        hsv_crop = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+        mask = np.zeros((crop.shape[0], crop.shape[1]), dtype=np.uint8)
+
+        for lower, upper in color_dict[color_key]:
+            m = cv2.inRange(hsv_crop, np.array(lower), np.array(upper))
+            mask = cv2.bitwise_or(mask, m)
+
+        color_ratio = cv2.countNonZero(mask) / (crop.shape[0] * crop.shape[1])
+        
+        # Lowered to 2% (0.02) to account for logos, shadows, or reflections
+        if color_ratio > best_score and color_ratio > 0.02:
+            best_score = color_ratio
+            best_match = obj
+
+    if best_match is not None:
+        return {"status": "ok", "track_id": best_match["track_id"], "bbox": best_match["bbox"]}
+    else:
+        # Changed status to not_found so the Tool knows it can safely fall back to the LLM
+        return {"status": "not_found", "message": f"OpenCV could not confidently find a {color_key} {class_name}."}
+
+@app.get("/internal/hardware_state")
+def get_internal_state():
+    """server_hans.py calls this to see hardware state"""
+    return {
+        "status": shared_state.get_hardware_status()
+    }
+
+class VerbosityRequest(BaseModel):
+    level: str
+
+@app.post("/internal/verbosity")
+def set_verbosity(req: VerbosityRequest):
+    """server_hans calls this to change LLM prompt"""
+    brain.set_verbosity(req.level)
+    return {"status": "ok"}
+
+@app.get("/memory")
+def get_memory():
+    """Get current memory state (targets and grasped objects)."""
+    try:
+        # Read from the memory file if available
+        from pathlib import Path
+        mem_file = Path("results") / "memory_participant_1.json"  # Adjust participant number
+        if mem_file.exists():
+            with open(mem_file) as f:
+                memory = json.load(f)
+                return {
+                    "grasped_objects": memory.get("grasped_objects", []),
+                    "target_list": memory.get("target_list", []),
+                    "list_mode": memory.get("list_mode", "ordered")
+                }
+    except Exception as e:
+        print(f"Error reading memory: {e}")
+    
+    return {
+        "grasped_objects": [],
+        "target_list": [],
+        "list_mode": "ordered"
+    }
+
+# Android endpoints
+@app.websocket("/ws/video")
+async def video_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    print("✅ Phone Connected")
+
+    await asyncio.sleep(1.0)
+
+    prefs = shared_state.get_preferences()
+    if prefs.get("play_welcome_message", True):
+        welcome_text = "Welcome back." if shared_state.get_memory_existed() else "Welcome."
+        try:
+            await websocket.send_text(json.dumps({"tts_command": welcome_text}))
+        except Exception:
+            pass # In case the phone disconnects instantly
+    
+    async def sender_task():
+        class NumpyEncoder(json.JSONEncoder):
+            def default(self, obj):
+                if isinstance(obj, np.integer):
+                    return int(obj)
+                if isinstance(obj, np.floating):
+                    return float(obj)
+                if isinstance(obj, np.ndarray):
+                    return obj.tolist()
+                return super(NumpyEncoder, self).default(obj)
+
+        previous_mode = None
+
+        try:
+            while True:
+                # Battery saver logic
+                prefs = shared_state.get_preferences()
+                is_battery_saver_on = prefs.get("battery_saver", False)
+                
+                if not is_battery_saver_on:
+                    # If setting is OFF, phone always runs at maximum framerate
+                    desired_mode = "active_mode"
+                else:
+                    # If setting is ON, check if we actually need high framerate right now
+                    current_target = shared_state.get_target()
+                    list_state = shared_state.get_target_list_state()
+                    needs_high_fps = (current_target != "none") or (len(list_state["targets"]) > 0)
+                    desired_mode = "active_mode" if needs_high_fps else "idle_mode"
+                
+                # Send the command if the state needs to change
+                if desired_mode != previous_mode:
+                    try:
+                        msg = json.dumps({"system_command": desired_mode})
+                        await websocket.send_text(msg)
+                        previous_mode = desired_mode
+                        
+                        # Just a nice console print so you can see it working
+                        status_text = "Idle (1 FPS)" if desired_mode == "idle_mode" else "Active (High FPS)"
+                        print(f"\n⚡ Phone Camera switched to: {status_text}")
+                    except Exception:
+                        pass
+
+                # Queue sender logic
+                if not result_queue.empty():
+                    item = result_queue.get()
+                    if isinstance(item, np.ndarray): continue 
+                    json_str = json.dumps(item, cls=NumpyEncoder)
+                    await websocket.send_text(json_str)
+                    
+                await asyncio.sleep(0.01) # Yield to event loop
+        except Exception as e:
+            print(f"Sender task error: {e}")
+
+    sender_future = asyncio.create_task(sender_task())
+
+    try:
+        while True:
+            data = await websocket.receive_bytes() 
+            
+            # Binary Unpacking
+            # Extract RGB Image
+            rgb_len = int.from_bytes(data[0:4], byteorder='big')
+            rgb_bytes = data[4 : 4+rgb_len]
+            np_arr = np.frombuffer(rgb_bytes, np.uint8)
+            frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+            
+            # Extract Depth Map (if phone sent it)
+            depth_map = None
+            if len(data) > 4 + rgb_len:
+                depth_bytes = data[4+rgb_len : ]
+                depth_arr = np.frombuffer(depth_bytes, np.uint8)
+                
+                # Decode as a color image
+                depth_bgr = cv2.imdecode(depth_arr, cv2.IMREAD_COLOR)
+                if depth_bgr is not None:
+                    # OpenCV uses BGR order. Blue=0, Green=1, Red=2
+                    # Reassemble the 16-bit integer: (Red * 256) + Green
+                    depth_mm = (depth_bgr[:,:,2].astype(np.float32) * 256.0) + depth_bgr[:,:,1].astype(np.float32)
+                    
+                    # Convert to metric information
+                    depth_map = depth_mm / 1000.0 
+                    depth_map = cv2.rotate(depth_map, cv2.ROTATE_90_CLOCKWISE)
+
+            if frame is not None:
+                frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+                latest_frame_ref["img"] = frame.copy()
+
+                if frame_queue.full():
+                    try: frame_queue.get_nowait()
+                    except queue.Empty: pass
+                
+                # Push BOTH images to the YOLO loop
+                frame_queue.put((frame, depth_map)) 
+                
+    except WebSocketDisconnect:
+        print("❌ Phone Disconnected")
+    finally:
+        sender_future.cancel()
+
+class CommandRequest(BaseModel):
+    text: str
+    bracelet_connected: bool = False
+    belt_connected: bool = False
+
+@app.post("/api/command")
+async def process_command(req: CommandRequest):
+    print(f"\n🎤 User audio transcribed as: {req.text}")
+
+    # Save hardware status to shared state so tools can read it
+    shared_state.set_hardware_status(req.bracelet_connected, req.belt_connected)
+
+    # Send information to memory logger
+    mcp_queue.put({"instruction": "log_command", "value": req.text})
+    
+    if mcp_session_global is None:
+        return {"answer": "The AI is currently booting up, please wait."}
+
+    try:
+        # Get preferences
+        prefs = shared_state.get_preferences()
+        current_verb = prefs.get('verbosity', 'normal')
+
+        system_hint = (
+            f"\n[System: Current settings -> Verbosity: {current_verb}. "
+            "CRITICAL INSTRUCTION: You are 'Hans', a spatial navigation assistant for a visually impaired user. "
+            "If the user asks a question completely unrelated to your camera feed, navigation, the physical environment, or your settings, "
+            "you MUST politely inform them that this is outside your scope as a spatial assistant. Do not answer general knowledge questions. "
+            "If the user asks to change speaking speed, append [SPEED:SLOW], [SPEED:NORMAL], or [SPEED:FAST]. "
+            "If the user asks to change verbosity, append [VERBOSITY:LOW], [VERBOSITY:NORMAL], or [VERBOSITY:HIGH].]"
+        )
+
+        # LLM processing
+        answer = await brain.process_query(
+            mcp_session_global, 
+            req.text + system_hint, 
+            openai_tools_global
+        )
+    
+        speed_match = re.search(r'\[SPEED:(SLOW|NORMAL|FAST)\]', answer, re.IGNORECASE)
+        verb_match = re.search(r'\[VERBOSITY:(LOW|NORMAL|HIGH)\]', answer, re.IGNORECASE)
+        
+        pref_updates = {}
+        if speed_match:
+            pref_updates["speech_speed"] = speed_match.group(1).lower()
+            
+        if verb_match:
+            pref_updates["verbosity"] = verb_match.group(1).lower()
+            # Strip the tag from the text so the Android TTS doesn't read it out loud!
+            answer = re.sub(r'\[VERBOSITY:(LOW|NORMAL|HIGH)\]', '', answer, flags=re.IGNORECASE).strip()
+            
+        # Save preferences
+        if pref_updates:
+            prefs.update(pref_updates) # Update local dict
+            shared_state.set_preferences(prefs) # Update RAM
+            
+            # Send to controller.py to write to memory.json
+            mcp_queue.put({
+                "instruction": "update_preferences", 
+                "value": json.dumps(pref_updates)
+            })
+
+        # Android needs the speed tag to adjust the TTS voice.
+        if not speed_match:
+            current_speed = prefs.get('speech_speed', 'normal').upper()
+            answer += f" [SPEED:{current_speed}]"
+
+        # Send command and response to logger
+        log_data = {
+            "user_text": req.text,
+            "ai_response": answer
+        }
+        mcp_queue.put({"instruction": "log_interaction", "value": json.dumps(log_data)})
+
+        return {"answer": answer}
+        
+    except Exception as e:
+        print(f"❌ LLM Processing Error: {e}")
+        return {"answer": "I encountered an error analyzing your request."}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

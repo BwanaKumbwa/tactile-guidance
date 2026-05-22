@@ -130,11 +130,11 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-
-
 ## PyCharm
-
 .idea/
+
+## VS Code
+.vscode/
 
 ## Git
 .DS_Store
