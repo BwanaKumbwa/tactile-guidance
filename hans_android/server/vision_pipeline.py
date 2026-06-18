@@ -653,6 +653,13 @@ class VisionPipeline:
     # Haptic engine
 
     def _run_haptic_engine(self, outputs: list) -> Optional[np.ndarray]:
+        """
+        Simplified haptic engine: adapters coordinate distance-based vibration.
+        
+        BeltAdapter: vibrates when target > 70cm
+        BraceletAdapter:   navigates when target ≤ 70cm
+        """
+        
         if self._grasped:
             if self._vibration_timer is None:
                 self._vibration_timer = time.time()
@@ -662,46 +669,23 @@ class VisionPipeline:
                 self._vibration_timer = -1
             return None
 
-        specific_id = self._specific_track_id
-        if specific_id != -1:
-            det = next((d for d in outputs
-                        if d[4] == specific_id and d[5] == self._class_target_obj), None)
-            if det is None and self._specific_bbox:
-                xc0, yc0, w0, h0 = self._specific_bbox
-                best_dist, det = float('inf'), None
-                for d in outputs:
-                    if d[5] == self._class_target_obj:
-                        dist = math.hypot(d[0] - xc0, d[1] - yc0)
-                        if dist < max(w0, h0) * 1.5 and dist < best_dist:
-                            best_dist, det = dist, d
-                if det is not None:
-                    self._specific_track_id = int(det[4])
-                    specific_id = self._specific_track_id
-                    print(f'[Pipeline] Specific ID recovered → {specific_id}')
-            if det is not None:
-                self._specific_bbox = list(map(float, det[:4]))
-
+        # Filter detections for haptic feedback
         hand_ids = [h + self._index_add for h in self._cfg.classes_hand]
         filtered = [
             d for d in outputs
             if d[5] in hand_ids
-            or (d[5] == self._class_target_obj
-                and (specific_id == -1 or d[4] == specific_id))
+            or d[5] == self._class_target_obj
         ]
 
+        # Prepare depth map (replace 0s with safe value)
         depth_for_haptics = None
         if self._depth_img is not None:
             depth_for_haptics = self._depth_img.copy()
             depth_for_haptics[depth_for_haptics == 0] = 10.0
 
-        try:
-            from feedback_device import NavigationContext
-        except ImportError:
-            from dataclasses import make_dataclass
-            NavigationContext = make_dataclass('NavigationContext', [
-                'raw_detections', 'target_class_id', 'hand_class_ids',
-                'depth_img', 'vibration_intensities', 'metric'])
-
+        # Build navigation context
+        from feedback_devices import NavigationContext
+        
         ctx = NavigationContext(
             raw_detections=filtered,
             target_class_id=self._class_target_obj,
@@ -711,25 +695,16 @@ class VisionPipeline:
             metric=self._cfg.metric_depth,
         )
 
+        # Let all adapters decide independently based on distance
         curr_target = None
         for device in self._feedback_devices:
-            result = device.update(ctx)
-            if isinstance(result, tuple):
-                overlapping, target = result
-                if overlapping:
-                    self._grasped = True
-                    for dev in self._feedback_devices:
-                        if not hasattr(dev, '_bc'):
-                            dev.signal_event('grasped')
-                if target is not None and curr_target is None:
-                    curr_target = target
-            elif result is not None and curr_target is None:
-                curr_target = result
-
-        bc = self.bracelet_controller
-        if bc and bc.grasping_time != 'NA' and bc.grasping_time != self._last_known_grasp_t:
-            self._last_known_grasp_t = bc.grasping_time
-            self._grasped = True
+            try:
+                result = device.update(ctx)
+                if result is not None and curr_target is None:
+                    curr_target = result
+            except Exception as e:
+                dev_type = device.get_status().get('type', 'unknown')
+                print(f'[Pipeline] Error updating {dev_type}: {e}')
 
         return curr_target
 
@@ -1063,8 +1038,8 @@ class VisionPipeline:
             annotator.sf      = annotator.lw / 3
             annotator.box_label(xyxy, ''.join(parts), color=labelcolor)
         result = annotator.result()
-        cv2.putText(result, f'FPS:{int(fps)}', (20, 70),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 1)
+        #cv2.putText(result, f'FPS:{int(fps)}', (20, 70),
+        #            cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 1)
         return result
 
     def depth_side_by_side(self, im0: np.ndarray, depth_img: np.ndarray) -> np.ndarray:
