@@ -110,6 +110,7 @@ def run_experiment_logic(
     custom_loader    = None,
     result_queue     = None,
     custom_belt      = None,
+    feedback_devices = None,
     latest_frame_ref = None,
     deployment_mode: bool = False,   # True → server_main.py, False → standalone
 ):
@@ -179,6 +180,9 @@ def run_experiment_logic(
             raw = _VirtualBraceletAdapter(belt_ctrl, intensities, navigation_type=1)
             devices.append(raw)
 
+    if feedback_devices is None:
+        feedback_devices = []
+
     # Pipeline
     pipeline = VisionPipeline(
         cfg                               = cfg,
@@ -186,7 +190,7 @@ def run_experiment_logic(
         shared_state                      = shared_state,
         result_queue                      = result_queue or queue.Queue(maxsize=10),
         frame_source                      = custom_loader,
-        feedback_devices                  = devices,
+        feedback_devices                  = feedback_devices,
         participant_vibration_intensities = intensities,
         latest_frame_ref                  = latest_frame_ref or {'img': None},
     )

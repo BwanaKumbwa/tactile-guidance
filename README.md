@@ -170,7 +170,9 @@ cp .env.example .env
 # Copy the .env to auditory_interface
 ```
 
-4. **Select your app flavor in Android Studio (Debug version for testing purposes)**
+4. **Open 'android_client' folder in Android Studio**
+
+5. **Select your app flavor in Android Studio (Debug version for testing purposes)**
 In Android Studio, select a build variant (Build -> Select Build Variant...) corresponding to your setup:
 - if you have a newer device that is able to run ARCore, select withArcoreDebug (recommended),
 - if you have an older device, select noArcoreDebug.
@@ -178,11 +180,11 @@ In Android Studio, select a build variant (Build -> Select Build Variant...) cor
 The application UI is the same for both options.
 If ARCore is enabled, depth maps are estimated using it and sent directly from the smarthpone to the server.
 
-5. **Adjust IP in the Kotlin app**
+6. **Adjust IP in the Kotlin app**
 In the MainActivity.kt corresponding to your deployment (hans_android/android_client/app/src/noArcore or withArcore/...), update SERVER_IP with your IPv4 address.
 On Windows, it can be obtained by running ipconfig command in the Command Prompt.
 
-6. **Always run the server first, then the app**
+7. **Always run the server first, then the app**
 
 ## Usage
 
