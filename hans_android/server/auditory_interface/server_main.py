@@ -551,10 +551,20 @@ async def video_endpoint(websocket: WebSocket):
     finally:
         sender_future.cancel()
 
+class VibrationRequest(BaseModel):
+    left: int
+    down: int
+    right: int
+    top: int
+    top_front : int
+    top_back : int
+
 class CommandRequest(BaseModel):
     text: str
     bracelet_connected: bool = False
     belt_connected: bool = False
+    vibration : VibrationRequest
+    pattern: str = "VIB_PATTERN_SINGLE"
 
 @app.post("/api/command")
 async def process_command(req: CommandRequest):
@@ -562,6 +572,19 @@ async def process_command(req: CommandRequest):
 
     # Save hardware status to shared state so tools can read it
     shared_state.set_hardware_status(req.bracelet_connected, req.belt_connected)
+
+    # Receive intensity and pattern preferences from Android
+    new_intensity = {
+        "left": req.vibration.left,
+        "down": req.vibration.down,
+        "right": req.vibration.right,
+        "top": req.vibration.top,
+        "top_front": req.vibration.top_front,
+        "top_back": req.vibration.top_back,
+    }
+
+    print("Received intensity:", new_intensity)
+    print("Pattern:", req.pattern)
 
     # Send information to memory logger
     mcp_queue.put({"instruction": "log_command", "value": req.text})

@@ -1,5 +1,6 @@
 package com.example.hans
 
+import com.google.android.material.bottomnavigation.BottomNavigationView
 import android.content.Intent
 import android.os.Bundle
 import android.widget.Button
@@ -12,22 +13,29 @@ class SettingsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_settings)
 
-        // Home icon: go to BluetoothActivity
-        val homeIcon = findViewById<ImageView>(R.id.Home)
-        homeIcon.setOnClickListener {
-            startActivity(
-                Intent(this, BluetoothActivity::class.java)
-            )
-            finish() // optional: prevents stacking activities
-        }
+        val bottomNav = findViewById<BottomNavigationView>(R.id.bottomNavigation)
 
-        // Camera icon: go to MainActivity
-        val cameraIcon = findViewById<ImageView>(R.id.Camera_command)
-        cameraIcon.setOnClickListener {
-            startActivity(
-                Intent(this, MainActivity::class.java)
-            )
-            finish() // optional: prevents stacking activities
+        bottomNav.selectedItemId = R.id.menu_setting
+        bottomNav.setOnItemSelectedListener { item ->
+
+            when (item.itemId) {
+
+                R.id.menu_home -> {
+                    startActivity(Intent(this, BluetoothActivity::class.java))
+                    finish()
+                    true
+                }
+
+                R.id.menu_camera -> {
+                    startActivity(Intent(this, MainActivity::class.java))
+                    finish()
+                    true
+                }
+
+                R.id.menu_setting -> true
+
+                else -> false
+            }
         }
 
         // Find the button

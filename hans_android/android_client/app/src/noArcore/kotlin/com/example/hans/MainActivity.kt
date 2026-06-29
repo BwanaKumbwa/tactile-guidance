@@ -1,13 +1,10 @@
 package com.example.hans
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.ImageFormat
-import android.graphics.Rect
-import android.graphics.YuvImage
 import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
@@ -19,7 +16,6 @@ import android.util.Base64
 import android.util.Log
 import android.view.MotionEvent
 import android.widget.Button
-import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -28,32 +24,30 @@ import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
+import com.google.android.material.bottomnavigation.BottomNavigationView
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
-import okio.ByteString.Companion.toByteString
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.IOException
-import java.nio.ByteBuffer
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
-import java.util.Locale
 
 class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
     // =================================================================
     // CONFIGURATION
     // =================================================================
-    private val SERVER_IP = "" // UPDATE
+    private val SERVER_IP = "192.168.178.33" // UPDATE
     private val WEBSOCKET_URL = "ws://$SERVER_IP:8000/ws/video"
     private val COMMAND_URL = "http://$SERVER_IP:8000/api/command"
     private val WAKE_WORD = "hans"
 
     // BLUETOOTH MAC ADDRESSES
-    private val MAC_BRACELET = "00:A0:50:93:8A:AA" // UPDATE
-    private val MAC_BELT     = "00:A0:50:DA:2B:54" // UPDATE
+    private val MAC_BRACELET = "00:A0:50:65:73:20" // UPDATE
+    private val MAC_BELT     = "00:A0:50:39:96:11" // UPDATE
     // =================================================================
 
     // UI Components
@@ -88,6 +82,10 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
     private lateinit var audioManager: AudioManager
 
+    private val Intensity_Prefs = "FullIntensityPrefs"
+
+    private val Pattern_Prefs = "PatternPrefs"
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -101,20 +99,29 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         tvAiResponse = findViewById(R.id.tvAiResponse)
         btnPtt = findViewById(R.id.btnPtt)
 
-        // NAVIGATION ICONS (PUT HERE)
-        val homeIcon = findViewById<ImageView>(R.id.Home)
-        homeIcon.setOnClickListener {
-            startActivity(Intent(this, BluetoothActivity::class.java))
-        }
+        val bottomNav = findViewById<BottomNavigationView>(R.id.bottomNavigation)
 
-        val settingIcon = findViewById<ImageView>(R.id.Setting)
-        settingIcon.setOnClickListener {
-            startActivity(Intent(this, SettingsActivity::class.java))
-        }
+        bottomNav.selectedItemId = R.id.menu_camera
+        bottomNav.setOnItemSelectedListener { item ->
 
-        val cameraIcon = findViewById<ImageView>(R.id.Camera_command)
-        cameraIcon.setOnClickListener {
-            Toast.makeText(this, "Camera already active", Toast.LENGTH_SHORT).show()
+            when (item.itemId) {
+
+                R.id.menu_home -> {
+                    startActivity(Intent(this, BluetoothActivity::class.java))
+                    finish()
+                    true
+                }
+
+                R.id.menu_camera -> true
+
+                R.id.menu_setting -> {
+                    startActivity(Intent(this, SettingsActivity::class.java))
+                    finish()
+                    true
+                }
+
+                else -> false
+            }
         }
 
         // 2. Initialize BLE Managers
@@ -211,7 +218,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 vib.put("top", 0) // Zero intensity
                 dummy.put("vibration", vib)
 
-                braceletManager.writeIntensity(vib)
+                //braceletManager.writeIntensity(vib)
             } catch (e: Exception) { Log.e("HANS", "Bracelet Connect Error", e) }
         }.start()
 
@@ -229,7 +236,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 vib.put("top", 0) // Zero intensity
                 dummy.put("vibration", vib)
 
-                beltManager.writeIntensity(vib)
+                //beltManager.writeIntensity(vib)
             } catch (e: Exception) { Log.e("HANS", "Belt Connect Error", e) }
         }.start()
 
@@ -653,6 +660,8 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
         json.put("bracelet_connected", braceletManager.isConnected())
         json.put("belt_connected", beltManager.isConnected())
+        json.put("vibration", loadIntensity())
+        json.put("pattern", loadPattern())
 
         val body = json.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
         val request = Request.Builder().url(COMMAND_URL).post(body).build()
@@ -753,6 +762,26 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 finish()
             }
         }
+
+    private fun loadIntensity(): JSONObject{
+        val prefs = getSharedPreferences(Intensity_Prefs, Context.MODE_PRIVATE)
+
+        val vibration = JSONObject()
+        vibration.put("left", prefs.getInt("leftIntensity", 0))
+        vibration.put("down", prefs.getInt("bottomIntensity", 0))
+        vibration.put("right", prefs.getInt("rightIntensity", 0))
+        vibration.put("top", prefs.getInt("topIntensity", 0))
+        vibration.put("top_front", prefs.getInt("topFrontIntensity", 0))
+        vibration.put("top_back", prefs.getInt("topBackIntensity", 0))
+
+        return vibration
+    }
+
+    private fun loadPattern(): String{
+        val prefs = getSharedPreferences(Pattern_Prefs, MODE_PRIVATE)
+
+        return prefs.getString("PATTERN_CODE","VIB_PATTERN_SINGLE") ?: "VIB_PATTERN_SINGLE"
+    }
 
     override fun onDestroy() {
         super.onDestroy()

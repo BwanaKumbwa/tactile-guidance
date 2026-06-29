@@ -1,15 +1,23 @@
 <resources>
     <string name="app_name">HANS</string>
-    <string name="title_activity_intensity">Intensity</string>
-    <string name="connect_bracelet">Connect Bracelet</string>
-    <string name="bracelet_connected">Bracelet Connected</string>
-    <string name="bracelet_not_connected">Bracelet Not Connected</string>
+    <string name="HANS">Hand Assistance Navigation System</string>
+    <string name="connect_bracelet">Connect Device</string>
+    <string name="bracelet_connected">Device Connected</string>
+    <string name="bracelet_not_connected">Device Not Connected</string>
     <string name="voice_command">Voice Command</string>
     <string name="camera_screen">Camera Screen</string>
-    <string name="setting">Settings</string>
-    <string name="intensity">Intensity</string>
-    <string name="pattern">Signal Pattern</string>
+    <string name="setting">SETTINGS</string>
+    <string name="intensity">INTENSITY</string>
+    <string name="pattern">SIGNAL PATTERN</string>
     <string name="select_intensity">Set Intensity as a Default</string>
     <string name="select_pattern">Set Signal Pattern as a Default</string>
+    <string name="bar">_______________________________</string>
+    <string name="top">Top</string>
+    <string name="topFront">Top Front</string>
+    <string name="topBack">Top Back</string>
+    <string name="left">Left</string>
+    <string name="down">Down</string>
+    <string name="right">Right</string>
+    <string name="zero">0</string>
 
 </resources>

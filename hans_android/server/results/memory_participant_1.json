@@ -1,5 +1,7 @@
 {
-    "target_list": [],
+    "target_list": [
+        "bottle"
+    ],
     "list_mode": "unordered",
     "grasped_objects": [
         "cup"
@@ -19,36 +21,36 @@
     "command_history": [],
     "world_map": {
         "myright": {
-            "location": "Middle Center, 0.88m",
-            "last_seen": "03:32:38 PM"
+            "location": "Bottom Center, unknown depth",
+            "last_seen": "02:31:12 PM"
         },
         "myleft": {
-            "location": "Middle Center, 0.91m",
-            "last_seen": "03:32:37 PM"
+            "location": "Middle Center, unknown depth",
+            "last_seen": "12:42:28 PM"
         },
         "potted plant": {
             "location": "Middle Center, 2.54m",
             "last_seen": "12:50:40 AM"
         },
         "clock": {
-            "location": "Middle Center, 0.34m",
-            "last_seen": "01:12:37 PM"
+            "location": "Top Left, unknown depth",
+            "last_seen": "02:30:51 PM"
         },
         "cup": {
-            "location": "Middle Center, 0.51m",
-            "last_seen": "01:17:55 PM"
+            "location": "Top Center, unknown depth",
+            "last_seen": "09:56:55 AM"
         },
         "bottle": {
-            "location": "Middle Center, 0.35m",
-            "last_seen": "01:12:57 PM"
+            "location": "Top Left, unknown depth",
+            "last_seen": "02:39:05 PM"
         },
         "apple": {
             "location": "Middle Center, 0.53m",
             "last_seen": "01:12:25 PM"
         },
         "bowl": {
-            "location": "Middle Right, 0.81m",
-            "last_seen": "01:12:56 PM"
+            "location": "Middle Right, unknown depth",
+            "last_seen": "09:56:51 AM"
         },
         "fork": {
             "location": "Top Center, 0.86m",
@@ -57,6 +59,10 @@
         "wine glass": {
             "location": "Middle Left, 0.55m",
             "last_seen": "01:11:39 PM"
+        },
+        "banana": {
+            "location": "Middle Left, unknown depth",
+            "last_seen": "12:40:26 PM"
         }
     }
 }
