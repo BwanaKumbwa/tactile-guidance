@@ -4,46 +4,56 @@ import com.google.android.material.bottomnavigation.BottomNavigationView
 import android.content.Intent
 import android.os.Bundle
 import android.widget.Button
-import android.widget.NumberPicker
-import android.widget.EditText
-import android.graphics.Paint
-import android.widget.ImageView
-import androidx.appcompat.app.AppCompatActivity
 
+import androidx.appcompat.app.AppCompatActivity
+import android.widget.RelativeLayout
 class PatternActivity : AppCompatActivity() {
 
     private val PATTERN_PREFS = "PatternPrefs"
+    private var selectedIndex = 0
+    private lateinit var singleMotor: RelativeLayout
+    private lateinit var multiMotor: RelativeLayout
+    private lateinit var sequenceMotor: RelativeLayout
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_pattern)
 
-        val patterns = arrayOf(
-            "Single Motor Continuous",
-            "Multi Motor Continuous",
-            "Multi Motor Sequence")
+        singleMotor = findViewById(R.id.button_single)
+        multiMotor = findViewById(R.id.button_multi)
+        sequenceMotor = findViewById(R.id.button_sequence)
 
-        val picker = findViewById<NumberPicker>(R.id.patternPicker)
         val selectButton = findViewById<Button>(R.id.button_select_pattern)
 
-        picker.minValue = 0
-        picker.maxValue = patterns.size - 1
-        picker.displayedValues = patterns
-        picker.wrapSelectorWheel = false
-        picker.scaleX = 2.5f
-        picker.scaleY = 2.5f
-
-        // Load saved pattern index
         val prefs = getSharedPreferences(PATTERN_PREFS, MODE_PRIVATE)
-        val savedIndex = prefs.getInt("PATTERN_INDEX", 0).coerceIn(0, patterns.size - 1)
-        picker.value = savedIndex
 
-        // Save selected pattern
+        // Load pattern yang tersimpan
+        selectedIndex = prefs.getInt("PATTERN_INDEX", 0)
+
+        updateSelection()
+
+        // Pilih Single
+        singleMotor.setOnClickListener {
+            selectedIndex = 0
+            updateSelection()
+        }
+
+        // Pilih Multi Continuous
+        multiMotor.setOnClickListener {
+            selectedIndex = 1
+            updateSelection()
+        }
+
+        // Pilih Sequence
+        sequenceMotor.setOnClickListener {
+            selectedIndex = 2
+            updateSelection()
+        }
+
+        // Simpan pilihan
         selectButton.setOnClickListener {
 
-            val selectedIndex = picker.value
-
-            val patternCode = when(selectedIndex) {
+            val patternCode = when (selectedIndex) {
                 0 -> "VIB_PATTERN_SINGLE"
                 1 -> "VIB_PATTERN_MULTI"
                 2 -> "VIB_PATTERN_SEQ"
@@ -85,6 +95,18 @@ class PatternActivity : AppCompatActivity() {
 
                 else -> false
             }
+        }
+    }
+
+    private fun updateSelection() {
+        singleMotor.setBackgroundResource(R.drawable.bg_outline)
+        multiMotor.setBackgroundResource(R.drawable.bg_outline)
+        sequenceMotor.setBackgroundResource(R.drawable.bg_outline)
+
+        when (selectedIndex) {
+            0 -> singleMotor.setBackgroundResource(R.drawable.bg_green)
+            1 -> multiMotor.setBackgroundResource(R.drawable.bg_green)
+            2 -> sequenceMotor.setBackgroundResource(R.drawable.bg_green)
         }
     }
 }

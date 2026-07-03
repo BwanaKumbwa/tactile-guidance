@@ -1,60 +1,54 @@
 package com.example.hans
 
-import com.google.android.material.bottomnavigation.BottomNavigationView
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.widget.TextView
 import android.widget.Button
-import android.text.Editable
-import android.text.TextWatcher
-import android.widget.EditText
-import android.widget.ImageView
-import android.widget.SeekBar
+import android.widget.LinearLayout
 import androidx.appcompat.app.AppCompatActivity
+import com.google.android.material.bottomnavigation.BottomNavigationView
+import android.widget.ProgressBar
 
 class FullIntensityActivity : AppCompatActivity() {
 
-    private lateinit var seekTop: SeekBar
-    private lateinit var seekTopFront: SeekBar
-    private lateinit var seekTopBack: SeekBar
-    private lateinit var seekRight: SeekBar
-    private lateinit var seekBottom: SeekBar
-    private lateinit var seekLeft: SeekBar
-
-    private lateinit var topValue: EditText
-    private lateinit var topFrontValue: EditText
-    private lateinit var topBackValue: EditText
-    private lateinit var rightValue: EditText
-    private lateinit var bottomValue: EditText
-    private lateinit var leftValue: EditText
-
     private val PREFS_NAME = "FullIntensityPrefs"
+
+    private lateinit var leftValue: TextView
+    private lateinit var rightValue: TextView
+    private lateinit var topValue: TextView
+    private lateinit var bottomValue: TextView
+    private lateinit var topFrontValue: TextView
+    private lateinit var topBackValue: TextView
+    private lateinit var leftProgress: ProgressBar
+    private lateinit var rightProgress: ProgressBar
+    private lateinit var topProgress: ProgressBar
+    private lateinit var bottomProgress: ProgressBar
+    private lateinit var topFrontProgress: ProgressBar
+    private lateinit var topBackProgress: ProgressBar
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_fullintensity)
 
-        // Binding SeekBars
-        seekTop = findViewById(R.id.seekTop)
-        seekTopFront = findViewById(R.id.seekTopFront)
-        seekTopBack = findViewById(R.id.seekTopBack)
-        seekRight = findViewById(R.id.seekRight)
-        seekBottom = findViewById(R.id.seekBottom)
-        seekLeft = findViewById(R.id.seekLeft)
-
-        // Binding EditTexts
+        // bind value text only
+        leftValue = findViewById(R.id.leftValue)
+        rightValue = findViewById(R.id.rightValue)
         topValue = findViewById(R.id.topValue)
+        bottomValue = findViewById(R.id.bottomValue)
         topFrontValue = findViewById(R.id.topFrontValue)
         topBackValue = findViewById(R.id.topBackValue)
-        rightValue = findViewById(R.id.rightValue)
-        bottomValue = findViewById(R.id.bottomValue)
-        leftValue = findViewById(R.id.leftValue)
+        leftProgress = findViewById(R.id.leftProgress)
+        rightProgress = findViewById(R.id.rightProgress)
+        topProgress = findViewById(R.id.topProgress)
+        bottomProgress = findViewById(R.id.downProgress)
+        topFrontProgress = findViewById(R.id.topFrontProgress)
+        topBackProgress = findViewById(R.id.topBackProgress)
 
         val bottomNav = findViewById<BottomNavigationView>(R.id.bottomNavigation)
 
         bottomNav.selectedItemId = R.id.menu_setting
         bottomNav.setOnItemSelectedListener { item ->
-
             when (item.itemId) {
 
                 R.id.menu_home -> {
@@ -79,85 +73,105 @@ class FullIntensityActivity : AppCompatActivity() {
             }
         }
 
-        // Load saved values
-        loadSeekBarValues()
+        // Intensity default for initialization = 50
+        initializeDefaultValues()
 
-        // Setup SeekBar + EditText bi-directional
-        setupSeekBarWithEdit(seekTop, topValue, "topIntensity")
-        setupSeekBarWithEdit(seekTopFront, topFrontValue, "topFrontIntensity")
-        setupSeekBarWithEdit(seekTopBack, topBackValue, "topBackIntensity")
-        setupSeekBarWithEdit(seekRight, rightValue, "rightIntensity")
-        setupSeekBarWithEdit(seekBottom, bottomValue, "bottomIntensity")
-        setupSeekBarWithEdit(seekLeft, leftValue, "leftIntensity")
+        // CLICK DIRECTION -> open calibration page
+        findViewById<LinearLayout>(R.id.leftLabel).setOnClickListener { openCalibration("left") }
+        findViewById<LinearLayout>(R.id.rightLabel).setOnClickListener { openCalibration("right") }
+        findViewById<LinearLayout>(R.id.topLabel).setOnClickListener { openCalibration("top") }
+        findViewById<LinearLayout>(R.id.bottomLabel).setOnClickListener { openCalibration("down") }
+        findViewById<LinearLayout>(R.id.topFrontLabel).setOnClickListener { openCalibration("topFront") }
+        findViewById<LinearLayout>(R.id.topBackLabel).setOnClickListener { openCalibration("topBack") }
+
+        loadValues()
 
         val selectButton = findViewById<Button>(R.id.button_select_intensity)
+
         selectButton.setOnClickListener {
-            saveSeekBarValue("topIntensity", seekTop.progress)
-            saveSeekBarValue("topFrontIntensity", seekTopFront.progress)
-            saveSeekBarValue("topBackIntensity", seekTopBack.progress)
-            saveSeekBarValue("rightIntensity", seekRight.progress)
-            saveSeekBarValue("bottomIntensity", seekBottom.progress)
-            saveSeekBarValue("leftIntensity", seekLeft.progress)
+
+            saveIntensity("leftIntensity", getValue("left"))
+            saveIntensity("bottomIntensity", getValue("down"))
+            saveIntensity("rightIntensity", getValue("right"))
+            saveIntensity("topIntensity", getValue("top"))
+            saveIntensity("topFrontIntensity", getValue("topFront"))
+            saveIntensity("topBackIntensity", getValue("topBack"))
 
             finish()
         }
-
     }
 
-    private fun setupSeekBarWithEdit(seekBar: SeekBar, editText: EditText, key: String) {
-        // Update EditText saat SeekBar digeser
-        seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                if (editText.text.toString() != progress.toString()) {
-                    editText.setText(progress.toString())
-                }
-                saveSeekBarValue(key, progress)
-            }
-            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
-        })
-
-        // Update SeekBar saat EditText diketik
-        editText.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-            override fun afterTextChanged(s: Editable?) {
-                val value = s.toString().toIntOrNull() ?: 0
-                if (value != seekBar.progress) {
-                    seekBar.progress = value.coerceIn(0, 100)
-                }
-            }
-        })
+    override fun onResume() {
+        super.onResume()
+        loadValues()
     }
 
-    private fun saveSeekBarValue(key: String, value: Int) {
+    private fun initializeDefaultValues() {
+
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        with(prefs.edit()) {
-            putInt(key, value)
-            apply()
-        }
+        val editor = prefs.edit()
+
+        if (!prefs.contains("left")) {
+            editor.putInt("left", 50)}
+
+        if (!prefs.contains("right")) {
+            editor.putInt("right", 50)}
+
+        if (!prefs.contains("top")) {
+            editor.putInt("top", 50)}
+
+        if (!prefs.contains("down")) {
+            editor.putInt("down", 50)}
+
+        if (!prefs.contains("topFront")) {
+            editor.putInt("topFront", 50)}
+
+        if (!prefs.contains("topBack")) {
+            editor.putInt("topBack", 50)}
+
+        editor.apply()
     }
 
-    private fun loadSeekBarValues() {
+    private fun openCalibration(direction: String) {
+        val currentValue = getValue(direction)
+
+        val intent = Intent(this, CalibrationActivity::class.java)
+        intent.putExtra("direction", direction)
+        intent.putExtra("value", currentValue)
+
+        startActivity(intent)
+    }
+
+    private fun loadValues() {
+        updateItem(leftValue, leftProgress, getValue("left"))
+        updateItem(rightValue, rightProgress, getValue("right"))
+        updateItem(topValue, topProgress, getValue("top"))
+        updateItem(bottomValue, bottomProgress, getValue("down"))
+        updateItem(topFrontValue, topFrontProgress, getValue("topFront"))
+        updateItem(topBackValue, topBackProgress, getValue("topBack"))
+    }
+
+    private fun updateItem(
+        valueView: TextView,
+        progressBar: ProgressBar,
+        value: Int
+    ) {
+        valueView.text = value.toString()
+        progressBar.progress = value
+    }
+
+    private fun getValue(key: String): Int {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getInt(key, 50)
+    }
+
+    private fun saveIntensity(key: String, value: Int) {
+
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-
-        seekLeft.progress = prefs.getInt("leftIntensity", 0)
-        leftValue.setText(seekLeft.progress.toString())
-
-        seekBottom.progress = prefs.getInt("bottomIntensity", 0)
-        bottomValue.setText(seekBottom.progress.toString())
-
-        seekRight.progress = prefs.getInt("rightIntensity", 0)
-        rightValue.setText(seekRight.progress.toString())
-
-        seekTop.progress = prefs.getInt("topIntensity", 0)
-        topValue.setText(seekTop.progress.toString())
-
-        seekTopFront.progress = prefs.getInt("topFrontIntensity", 0)
-        topFrontValue.setText(seekTopFront.progress.toString())
-
-        seekTopBack.progress = prefs.getInt("topBackIntensity", 0)
-        topBackValue.setText(seekTopBack.progress.toString())
+        prefs.edit()
+            .putInt(key, value)
+            .apply()
     }
+
 }

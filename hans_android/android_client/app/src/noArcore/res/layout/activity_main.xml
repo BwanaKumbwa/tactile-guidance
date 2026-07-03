@@ -68,18 +68,18 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>
 
-    <Button
+    <ImageButton
         android:id="@+id/btnPtt"
-        android:layout_width="220dp"
-        android:layout_height="60dp"
-        android:text="Hold to Speak"
-        android:textColor="@android:color/white"
-        android:textSize="16sp"
-        android:backgroundTint="#CC2196F3"
-        android:elevation="30dp"
-        android:layout_marginBottom="110dp"
-        app:layout_constraintBottom_toBottomOf="@id/bottomNavigation"
+        android:layout_width="120dp"
+        android:layout_height="120dp"
+        android:background="@drawable/circle_green"
+        android:src="@drawable/microphone"
+        android:scaleType="centerInside"
+        android:padding="25dp"
+        android:contentDescription="Hold to Speak"
+        app:layout_constraintBottom_toTopOf="@id/bottomNavigation"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"/>
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginBottom="30dp"/>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

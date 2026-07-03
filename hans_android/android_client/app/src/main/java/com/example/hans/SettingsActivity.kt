@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.widget.Button
 import androidx.appcompat.app.AppCompatActivity
 import android.widget.ImageView
+import android.widget.RelativeLayout
 
 class SettingsActivity : AppCompatActivity() {
 
@@ -39,7 +40,7 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         // Find the button
-        val intensityButton = findViewById<Button>(R.id.button_intensity)
+        val intensityButton = findViewById<RelativeLayout>(R.id.button_intensity)
 
         // When clicked → go to IntensityActivity
         intensityButton.setOnClickListener {
@@ -49,7 +50,7 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         // Find the button
-        val patternButton = findViewById<Button>(R.id.button_pattern)
+        val patternButton = findViewById<RelativeLayout>(R.id.button_pattern)
 
         // When clicked → go to PatternActivity
         patternButton.setOnClickListener {

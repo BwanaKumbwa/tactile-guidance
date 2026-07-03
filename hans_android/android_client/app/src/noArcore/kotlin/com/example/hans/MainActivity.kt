@@ -16,6 +16,7 @@ import android.util.Base64
 import android.util.Log
 import android.view.MotionEvent
 import android.widget.Button
+import android.widget.ImageButton
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -55,7 +56,9 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private lateinit var overlayView: OverlayView
     private lateinit var tvStatus: TextView
     private lateinit var tvAiResponse: TextView
-    private lateinit var btnPtt: Button
+    private lateinit var btnPtt: ImageButton
+    private val PTT_COLOR_IDLE = R.drawable.circle_green
+    private val PTT_COLOR_ACTIVE = R.drawable.circle_red
     private lateinit var pttRecognitionListener: RecognitionListener
 
     private lateinit var cameraExecutor: ExecutorService
@@ -68,9 +71,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private lateinit var speechRecognizer: SpeechRecognizer
     private var isListening = false
     private var speechIntent: android.content.Intent? = null
-
-    private val PTT_COLOR_IDLE   = android.graphics.Color.parseColor("#CC2196F3") // Blue
-    private val PTT_COLOR_ACTIVE = android.graphics.Color.parseColor("#CCCC0000") // Red
 
     @Volatile private var isPttRecording = false
 
@@ -187,6 +187,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
                 override fun onDone(utteranceId: String?) {
                     // TTS finished speaking! Safe to start listening again.
+                    showStatus("🎤 Ready. Hold microphone to speak.")
                     Log.d("HANS", "TTS Finished. Resuming listening.")
                     restartListening()
                 }
@@ -506,111 +507,76 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private fun startPttRecording() {
         isPttRecording = true
 
-        if (::tts.isInitialized && tts.isSpeaking) tts.stop()
-
-        runOnUiThread {
-            tvStatus.text = "🔴 Recording... release to send"
-            btnPtt.text = "Release to Send"
-            btnPtt.setBackgroundColor(PTT_COLOR_ACTIVE)
+        if (::tts.isInitialized && tts.isSpeaking) {
+            tts.stop()
         }
 
-        // Destroy the background recognizer
+        runOnUiThread {
+            btnPtt.setBackgroundResource(PTT_COLOR_ACTIVE)
+        }
+
+        showStatus("Recording... Release to Send")
+
         try {
             speechRecognizer.cancel()
             speechRecognizer.destroy()
-            Log.d("HANS", "Background recognizer destroyed")
-        } catch (e: Exception) {
-            Log.e("HANS", "Recognizer destroy failed: $e")
+        } catch (_: Exception) {
         }
 
-        // Wait for audio system to fully reset
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+
             if (!isPttRecording) return@postDelayed
 
+            speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
+            speechRecognizer.setRecognitionListener(pttRecognitionListener)
+
             try {
-                // Create a NEW recognizer for PTT
-                speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this@MainActivity)
-                speechRecognizer.setRecognitionListener(object : RecognitionListener {
-                    override fun onReadyForSpeech(params: Bundle?) {
-                        runOnUiThread { tvStatus.text = "🔴 Listening..." }
-                    }
-                    override fun onBeginningOfSpeech() {}
-                    override fun onRmsChanged(rmsdB: Float) {}
-                    override fun onBufferReceived(buffer: ByteArray?) {}
-                    override fun onEndOfSpeech() {}
-                    override fun onError(error: Int) {
-                        Log.e("HANS", "PTT error: $error")
-                        val msg = when (error) {
-                            SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No speech detected — try again"
-                            SpeechRecognizer.ERROR_NO_MATCH       -> "Couldn't understand — try again"
-                            SpeechRecognizer.ERROR_AUDIO          -> "Mic error — try again"
-                            else                                  -> "Error ($error) — try again"
-                        }
-                        runOnUiThread { tvStatus.text = msg }
-                        resetPttButton()
-                        restartListening()
-                    }
-                    override fun onResults(results: Bundle?) {
-                        val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                        if (!matches.isNullOrEmpty()) {
-                            val spokenText = matches[0].lowercase().trim()
-                            resetPttButton()
-                            if (spokenText.isNotBlank()) {
-                                runOnUiThread { tvAiResponse.text = "Processing: \"$spokenText\"" }
-                                sendToBackend(spokenText)
-                            } else {
-                                runOnUiThread { tvStatus.text = "Nothing heard — try again" }
-                                restartListening()
-                            }
-                        }
-                    }
-                    override fun onPartialResults(partialResults: Bundle?) {
-                        val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                        if (!partial.isNullOrEmpty() && partial[0].isNotBlank()) {
-                            runOnUiThread { tvAiResponse.text = "Hearing: \"${partial[0]}\"" }
-                        }
-                    }
-                    override fun onEvent(eventType: Int, params: Bundle?) {}
-                })
-
-                audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_MUTE, 0)
                 speechRecognizer.startListening(speechIntent)
-                Log.d("HANS", "PTT listening started (new recognizer)")
-
-                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                    audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_UNMUTE, 0)
-                }, 300)
             } catch (e: Exception) {
-                Log.e("HANS", "PTT start failed: $e")
-                isPttRecording = false
+                e.printStackTrace()
+                showStatus("❌ Failed to start recording")
                 resetPttButton()
                 restartListening()
             }
-        }, 800)
+
+        }, 500)
     }
 
     private fun stopPttRecording() {
+
         runOnUiThread {
-            tvStatus.text = "Status: Processing..."
-            btnPtt.text = "Processing..."
             btnPtt.isEnabled = false
         }
+
+        showStatus("Processing command...")
+
         try {
             speechRecognizer.stopListening()
         } catch (e: Exception) {
-            Log.e("HANS", "PTT stop failed: $e")
-            isPttRecording = false
-            runOnUiThread { resetPttButton() }
+            e.printStackTrace()
+            showStatus("❌ Failed to process")
+            resetPttButton()
             restartListening()
         }
     }
 
     private fun resetPttButton() {
+
+        isPttRecording = false
+
         runOnUiThread {
-            isPttRecording = false
-            btnPtt.text = "Hold to Speak"
+
             btnPtt.isEnabled = true
-            btnPtt.setBackgroundColor(PTT_COLOR_IDLE)
+            btnPtt.setBackgroundResource(PTT_COLOR_IDLE)
+        }
+
+        showStatus("Hold microphone to speak")
+    }
+
+    private fun showStatus(message: String) {
+        runOnUiThread {
+            tvStatus.text = message
+            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -711,6 +677,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
                         runOnUiThread {
                             tvAiResponse.text = "AI: $answer"
+                            showStatus("🤖 AI is speaking...")
 
                             // Speak the text, and pass an ID ("TTS_REPLY") so
                             // onDone() knows when to restart the microphone.

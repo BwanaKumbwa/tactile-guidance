@@ -21,8 +21,8 @@
     "command_history": [],
     "world_map": {
         "myright": {
-            "location": "Bottom Center, unknown depth",
-            "last_seen": "02:31:12 PM"
+            "location": "Bottom Right, unknown depth",
+            "last_seen": "10:14:45 AM"
         },
         "myleft": {
             "location": "Middle Center, unknown depth",
@@ -33,12 +33,12 @@
             "last_seen": "12:50:40 AM"
         },
         "clock": {
-            "location": "Top Left, unknown depth",
-            "last_seen": "02:30:51 PM"
+            "location": "Bottom Right, unknown depth",
+            "last_seen": "11:54:12 AM"
         },
         "cup": {
-            "location": "Top Center, unknown depth",
-            "last_seen": "09:56:55 AM"
+            "location": "Middle Left, unknown depth",
+            "last_seen": "07:59:18 AM"
         },
         "bottle": {
             "location": "Top Left, unknown depth",

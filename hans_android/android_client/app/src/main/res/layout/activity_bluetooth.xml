@@ -37,10 +37,9 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="@string/HANS"
-        android:textStyle="bold"
-        android:textSize="20sp"
-        android:textColor="@android:color/darker_gray"
-        android:layout_marginTop="10dp"
+        android:textSize="16sp"
+        android:textColor="#666666"
+        android:layout_marginTop="8dp"
         app:layout_constraintTop_toBottomOf="@id/GuideHand"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>
@@ -50,43 +49,54 @@
         android:id="@+id/Bluetooth"
         android:layout_width="230dp"
         android:layout_height="230dp"
-        android:layout_marginTop="40dp"
         android:src="@drawable/bluetooth"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintBottom_toBottomOf="parent"
+        android:layout_marginTop="20dp"
+        app:layout_constraintTop_toBottomOf="@id/HansAssistanceNavigationSystem"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>
 
     <!-- BUTTON 1: BELT -->
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/button_belt"
-        android:layout_width="290dp"
-        android:layout_height="80dp"
-        android:background="#93EF73"
+        android:layout_width="0dp"
+        android:layout_height="70dp"
+        android:layout_marginHorizontal="16dp"
+        android:background="@drawable/bg_outline"
         app:layout_constraintTop_toBottomOf="@id/Bluetooth"
         app:layout_constraintBottom_toTopOf="@id/button_bracelet"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
-        <!-- TEXT -->
+        <!-- Left Icon -->
+        <ImageView
+            android:id="@+id/iconLeftBelt"
+            android:layout_width="35dp"
+            android:layout_height="35dp"
+            android:layout_marginStart="25dp"
+            android:src="@drawable/bluetooth"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <!-- Device Name -->
         <TextView
             android:id="@+id/text_belt"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="CONNECT BELT"
+            android:text="@string/connect_belt"
+            android:textColor="@android:color/black"
             android:textSize="20sp"
             android:textStyle="bold"
-            android:textColor="@color/black"
-            app:layout_constraintStart_toStartOf="parent"
+            android:layout_marginStart="20dp"
+            app:layout_constraintStart_toEndOf="@id/iconLeftBelt"
             app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintBottom_toBottomOf="parent"
-            android:layout_marginStart="20dp"/>
+            app:layout_constraintBottom_toBottomOf="parent"/>
 
         <!-- ICON (CHECK / CROSS) -->
         <ImageView
             android:id="@+id/icon_belt"
-            android:layout_width="28dp"
-            android:layout_height="28dp"
+            android:layout_width="30dp"
+            android:layout_height="30dp"
             android:src="@drawable/cross"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintTop_toTopOf="parent"
@@ -98,36 +108,48 @@
     <!-- BUTTON 2: BRACELET -->
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/button_bracelet"
-        android:layout_width="290dp"
-        android:layout_height="80dp"
-        android:background="#93EF73"
+        android:layout_width="0dp"
+        android:layout_height="70dp"
+        android:layout_marginHorizontal="16dp"
+        android:background="@drawable/bg_outline"
         app:layout_constraintTop_toBottomOf="@id/button_belt"
         app:layout_constraintBottom_toTopOf="@id/bottomNavigation"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
+        <!-- Left Icon -->
+        <ImageView
+            android:id="@+id/iconLeftBracelet"
+            android:layout_width="35dp"
+            android:layout_height="35dp"
+            android:layout_marginStart="25dp"
+            android:src="@drawable/bluetooth"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
         <TextView
             android:id="@+id/text_bracelet"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="CONNECT BRACELET"
+            android:text="@string/connect_bracelet"
+            android:textColor="@android:color/black"
             android:textSize="20sp"
             android:textStyle="bold"
-            android:textColor="@color/black"
-            app:layout_constraintStart_toStartOf="parent"
+            android:layout_marginStart="20dp"
+            app:layout_constraintStart_toEndOf="@id/iconLeftBracelet"
             app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintBottom_toBottomOf="parent"
-            android:layout_marginStart="20dp"/>
-
+            app:layout_constraintBottom_toBottomOf="parent"/>
         <ImageView
             android:id="@+id/icon_bracelet"
-            android:layout_width="28dp"
-            android:layout_height="28dp"
+            android:layout_width="30dp"
+            android:layout_height="30dp"
             android:src="@drawable/cross"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintBottom_toBottomOf="parent"
             android:layout_marginEnd="20dp"/>
+
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 

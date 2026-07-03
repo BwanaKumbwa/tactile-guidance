@@ -7,6 +7,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import android.content.SharedPreferences
+import androidx.constraintlayout.widget.ConstraintLayout
 
 class BluetoothActivity : AppCompatActivity() {
 
@@ -18,9 +19,10 @@ class BluetoothActivity : AppCompatActivity() {
     private lateinit var beltManager: BleManager
 
     private lateinit var bottomNav: BottomNavigationView
-    private lateinit var connectBelt: androidx.constraintlayout.widget.ConstraintLayout
-    private lateinit var connectBracelet: androidx.constraintlayout.widget.ConstraintLayout
-
+    private lateinit var connectBelt: ConstraintLayout
+    private lateinit var connectBracelet: ConstraintLayout
+    private lateinit var beltBluetooth: ImageView
+    private lateinit var braceletBluetooth: ImageView
     private lateinit var beltIcon: ImageView
     private lateinit var braceletIcon: ImageView
     private lateinit var prefs: SharedPreferences
@@ -42,6 +44,9 @@ class BluetoothActivity : AppCompatActivity() {
 
         beltIcon = findViewById(R.id.icon_belt)
         braceletIcon = findViewById(R.id.icon_bracelet)
+
+        beltBluetooth = findViewById(R.id.iconLeftBelt)
+        braceletBluetooth = findViewById(R.id.iconLeftBracelet)
 
         // default UI
         renderSavedState()
@@ -187,16 +192,30 @@ class BluetoothActivity : AppCompatActivity() {
     // ICON UPDATE
     private fun updateIconFromState(
         beltConnected: Boolean,
-        braceletConnected: Boolean
-    ) {
+        braceletConnected: Boolean) {
 
-        beltIcon.setImageResource(
-            if (beltConnected) R.drawable.check else R.drawable.cross
-        )
+        // BELT
+        if (beltConnected) {
+            connectBelt.setBackgroundResource(R.drawable.bg_green)
+            beltIcon.setImageResource(R.drawable.check)
+            beltBluetooth.setImageResource(R.drawable.connected)
+        } else {
+            connectBelt.setBackgroundResource(R.drawable.bg_red)
+            beltIcon.setImageResource(R.drawable.cross)
+            beltBluetooth.setImageResource(R.drawable.disconnected)
+        }
 
-        braceletIcon.setImageResource(
-            if (braceletConnected) R.drawable.check else R.drawable.cross
-        )
+        // BRACELET
+        if (braceletConnected) {
+
+            connectBracelet.setBackgroundResource(R.drawable.bg_green)
+            braceletIcon.setImageResource(R.drawable.check)
+            braceletBluetooth.setImageResource(R.drawable.connected)
+        } else {
+            connectBracelet.setBackgroundResource(R.drawable.bg_red)
+            braceletIcon.setImageResource(R.drawable.cross)
+            braceletBluetooth.setImageResource(R.drawable.disconnected)
+        }
     }
 
     // LOAD SAVED STATE
