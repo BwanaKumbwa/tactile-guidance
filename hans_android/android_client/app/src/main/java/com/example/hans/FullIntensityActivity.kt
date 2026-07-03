@@ -26,6 +26,8 @@ class FullIntensityActivity : AppCompatActivity() {
     private lateinit var bottomProgress: ProgressBar
     private lateinit var topFrontProgress: ProgressBar
     private lateinit var topBackProgress: ProgressBar
+    private lateinit var beltValue : TextView
+    private lateinit var beltProgress: ProgressBar
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -44,6 +46,8 @@ class FullIntensityActivity : AppCompatActivity() {
         bottomProgress = findViewById(R.id.downProgress)
         topFrontProgress = findViewById(R.id.topFrontProgress)
         topBackProgress = findViewById(R.id.topBackProgress)
+        beltValue = findViewById(R.id.beltValue)
+        beltProgress = findViewById(R.id.beltProgress)
 
         val bottomNav = findViewById<BottomNavigationView>(R.id.bottomNavigation)
 
@@ -83,6 +87,7 @@ class FullIntensityActivity : AppCompatActivity() {
         findViewById<LinearLayout>(R.id.bottomLabel).setOnClickListener { openCalibration("down") }
         findViewById<LinearLayout>(R.id.topFrontLabel).setOnClickListener { openCalibration("topFront") }
         findViewById<LinearLayout>(R.id.topBackLabel).setOnClickListener { openCalibration("topBack") }
+        findViewById<LinearLayout>(R.id.beltLabel).setOnClickListener { openCalibration("belt") }
 
         loadValues()
 
@@ -96,6 +101,7 @@ class FullIntensityActivity : AppCompatActivity() {
             saveIntensity("topIntensity", getValue("top"))
             saveIntensity("topFrontIntensity", getValue("topFront"))
             saveIntensity("topBackIntensity", getValue("topBack"))
+            saveIntensity("beltIntensity", getValue("belt"))
 
             finish()
         }
@@ -129,6 +135,9 @@ class FullIntensityActivity : AppCompatActivity() {
         if (!prefs.contains("topBack")) {
             editor.putInt("topBack", 50)}
 
+        if (!prefs.contains("belt")) {
+            editor.putInt("belt", 50)}
+
         editor.apply()
     }
 
@@ -149,6 +158,7 @@ class FullIntensityActivity : AppCompatActivity() {
         updateItem(bottomValue, bottomProgress, getValue("down"))
         updateItem(topFrontValue, topFrontProgress, getValue("topFront"))
         updateItem(topBackValue, topBackProgress, getValue("topBack"))
+        updateItem(beltValue, beltProgress, getValue("belt"))
     }
 
     private fun updateItem(

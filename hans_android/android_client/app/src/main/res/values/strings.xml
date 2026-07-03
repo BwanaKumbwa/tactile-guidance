@@ -11,8 +11,11 @@
     <string name="info_setting"> Manage how HANS guides you.</string>
     <string name="intensity">Intensity</string>
     <string name="info_intensity">Adjust vibration strength per direction</string>
+    <string name="intensity_bracelet">Bracelet Intensity</string>
+    <string name="belt">Belt</string>
+    <string name="intensity_belt">Belt Intensity</string>
     <string name="pattern">Signal Pattern</string>
-    <string name="info_pattern">Choose how vibrations pulse</string>
+    <string name="info_pattern">Choose how vibrations pattern</string>
     <string name="info_signal">Choose how the motors pulse, then try it.</string>
     <string name="single">Single motor continuous</string>
     <string name="info_single">One continuous vibration from one vibromotor.</string>

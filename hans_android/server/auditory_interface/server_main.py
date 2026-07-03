@@ -558,6 +558,7 @@ class VibrationRequest(BaseModel):
     top: int
     top_front : int
     top_back : int
+    belt: int
 
 class CommandRequest(BaseModel):
     text: str
@@ -581,6 +582,7 @@ async def process_command(req: CommandRequest):
         "top": req.vibration.top,
         "top_front": req.vibration.top_front,
         "top_back": req.vibration.top_back,
+        "belt": req.vibration.belt,
     }
 
     print("Received intensity:", new_intensity)

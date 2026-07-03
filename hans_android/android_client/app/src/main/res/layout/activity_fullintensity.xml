@@ -20,19 +20,29 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <!-- SCROLL AREA -->
+    <!-- BRACELET -->
+    <TextView
+        android:id="@+id/intensityBracelet"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/intensity_bracelet"
+        android:textSize="16sp"
+        android:textColor="#666666"
+        android:layout_marginStart="40dp"
+        android:layout_marginTop="8dp"
+        app:layout_constraintTop_toBottomOf="@id/textIntensity"
+        app:layout_constraintStart_toStartOf="parent"/>
 
+    <!-- SCROLL AREA -->
     <!-- BUTTON -->
     <ScrollView
         android:id="@+id/scrollArea"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        app:layout_constraintBottom_toTopOf="@id/button_select_intensity"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.0"
-        app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/textIntensity"
-        app:layout_constraintVertical_bias="0.0">
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/intensityBelt">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -40,7 +50,6 @@
             android:orientation="vertical"
             android:padding="40dp">
 
-            <!-- ITEM TEMPLATE -->
             <!-- LEFT -->
             <LinearLayout
                 android:id="@+id/leftLabel"
@@ -386,6 +395,77 @@
 
         </LinearLayout>
     </ScrollView>
+
+    <!-- BELT -->
+    <TextView
+        android:id="@+id/intensityBelt"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="40dp"
+        android:layout_marginBottom="8dp"
+        android:text="@string/intensity_belt"
+        android:textColor="#666666"
+        android:textSize="16sp"
+        app:layout_constraintBottom_toTopOf="@id/beltLabel"
+        app:layout_constraintStart_toStartOf="parent"/>
+
+    <LinearLayout
+        android:id="@+id/beltLabel"
+        android:layout_width="0dp"
+        android:layout_height="60dp"
+        android:layout_marginHorizontal="40dp"
+        android:layout_marginBottom="20dp"
+        android:layout_marginStart="40dp"
+        android:layout_marginEnd="40dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/button_select_intensity">
+
+        <ImageView
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@drawable/circle_green"
+            android:padding="8dp"
+            android:src="@drawable/belt"
+            app:tint="@color/icon_green"/>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="12dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/belt"
+                android:textColor="@color/black"
+                android:textSize="18sp"/>
+
+            <ProgressBar
+                android:id="@+id/beltProgress"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="6dp"
+                android:layout_marginTop="6dp"
+                android:max="100"
+                android:progress="0"
+                android:progressDrawable="@drawable/progress_green"/>
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/beltValue"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:text="@string/zero"
+            android:textColor="@color/icon_green"
+            android:textSize="18sp"
+            android:textStyle="bold"/>
+    </LinearLayout>
 
     <Button
         android:id="@+id/button_select_intensity"

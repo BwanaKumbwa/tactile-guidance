@@ -24,6 +24,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.content.ContextCompat
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import okhttp3.*
@@ -56,7 +57,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private lateinit var overlayView: OverlayView
     private lateinit var tvStatus: TextView
     private lateinit var tvAiResponse: TextView
-    private lateinit var btnPtt: ImageButton
+    private lateinit var btnPtt: ConstraintLayout
     private val PTT_COLOR_IDLE = R.drawable.circle_green
     private val PTT_COLOR_ACTIVE = R.drawable.circle_red
     private lateinit var pttRecognitionListener: RecognitionListener
@@ -97,7 +98,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         overlayView = findViewById(R.id.overlayView)
         tvStatus = findViewById(R.id.tvStatus)
         tvAiResponse = findViewById(R.id.tvAiResponse)
-        btnPtt = findViewById(R.id.btnPtt)
+        btnPtt = findViewById(R.id.rootLayout)
 
         val bottomNav = findViewById<BottomNavigationView>(R.id.bottomNavigation)
 
@@ -570,7 +571,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             btnPtt.setBackgroundResource(PTT_COLOR_IDLE)
         }
 
-        showStatus("Hold microphone to speak")
+        showStatus("Press screen to speak")
     }
 
     private fun showStatus(message: String) {
@@ -740,6 +741,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         vibration.put("top", prefs.getInt("topIntensity", 0))
         vibration.put("top_front", prefs.getInt("topFrontIntensity", 0))
         vibration.put("top_back", prefs.getInt("topBackIntensity", 0))
+        vibration.put("belt", prefs.getInt("beltIntensity", 0))
 
         return vibration
     }

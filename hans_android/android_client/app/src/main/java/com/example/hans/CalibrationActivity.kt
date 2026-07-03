@@ -27,7 +27,7 @@ class CalibrationActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_calibration)
 
-        // Gunakan tombol volume
+        // Use the volume button
         setVolumeControlStream(AudioManager.STREAM_MUSIC)
 
         val bottomNav = findViewById<BottomNavigationView>(R.id.bottomNavigation)
@@ -59,7 +59,7 @@ class CalibrationActivity : AppCompatActivity() {
             }
         }
 
-        // Ambil data dari FullIntensityActivity
+        // Take the data from FullIntensityActivity
         direction = intent.getStringExtra("direction") ?: ""
         value = intent.getIntExtra("value", 50)
 
@@ -76,6 +76,7 @@ class CalibrationActivity : AppCompatActivity() {
             "down" -> "DOWN"
             "topFront" -> "TOP FRONT"
             "topBack" -> "TOP BACK"
+            "belt" -> "BELT"
             else -> "-"
         }
 

@@ -21,28 +21,28 @@
     "command_history": [],
     "world_map": {
         "myright": {
-            "location": "Bottom Right, unknown depth",
-            "last_seen": "10:14:45 AM"
+            "location": "Top Center, unknown depth",
+            "last_seen": "02:38:49 PM"
         },
         "myleft": {
-            "location": "Middle Center, unknown depth",
-            "last_seen": "12:42:28 PM"
+            "location": "Top Center, unknown depth",
+            "last_seen": "02:38:50 PM"
         },
         "potted plant": {
             "location": "Middle Center, 2.54m",
             "last_seen": "12:50:40 AM"
         },
         "clock": {
-            "location": "Bottom Right, unknown depth",
-            "last_seen": "11:54:12 AM"
+            "location": "Middle Left, unknown depth",
+            "last_seen": "02:15:38 PM"
         },
         "cup": {
-            "location": "Middle Left, unknown depth",
-            "last_seen": "07:59:18 AM"
+            "location": "Bottom Center, unknown depth",
+            "last_seen": "02:17:25 PM"
         },
         "bottle": {
-            "location": "Top Left, unknown depth",
-            "last_seen": "02:39:05 PM"
+            "location": "Bottom Left, unknown depth",
+            "last_seen": "02:18:05 PM"
         },
         "apple": {
             "location": "Middle Center, 0.53m",
