@@ -2,12 +2,52 @@ plugins {
     alias(libs.plugins.android.application)
 }
 
+// Read .env for defaultConfig access
+val envFile = rootDir.parentFile.resolve(".env")
+val envMap = mutableMapOf<String, String>()
+
+if (envFile.exists()) {
+    envFile.readLines().forEach { line ->
+        if (line.isNotBlank() && !line.startsWith("#")) {
+            val parts = line.split("=", limit = 2)
+            if (parts.size == 2) {
+                envMap[parts[0].trim()] = parts[1].trim()
+            }
+        }
+    }
+    println("Loaded ${envMap.size} variables from .env")
+} else {
+    println(".env file not found at: ${envFile.absolutePath}")
+}
+
+// Create a task that tracks .env as input
+val envConfigTask = tasks.register("generateEnvConfig") {
+    // Declare .env as input (Gradle will track changes)
+    inputs.file(envFile)
+    
+    // Output is a generated properties file
+    val outputDir = layout.buildDirectory.dir("generated/env")
+    val outputFile = outputDir.map { it.file("env.properties") }
+    outputs.file(outputFile)
+    
+    doLast {
+        val output = outputFile.get().asFile
+        output.parentFile.mkdirs()
+        output.writeText(envMap.entries.joinToString("\n") { "${it.key}=${it.value}" })
+        println("Generated env config at ${output.absolutePath}")
+    }
+}
+
 android {
     namespace = "com.example.hans"
     compileSdk {
         version = release(36) {
             minorApiLevel = 1
         }
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     defaultConfig {
@@ -18,6 +58,12 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Read directly from envMap (not local.properties)
+        buildConfigField("String", "SERVER_IP", "\"${envMap["SERVER_IP"] ?: ""}\"")
+        buildConfigField("String", "MAC_BRACELET", "\"${envMap["MAC_BRACELET"] ?: ""}\"")
+        buildConfigField("String", "MAC_BELT", "\"${envMap["MAC_BELT"] ?: ""}\"")
+        buildConfigField("String", "WAKE_WORD", "\"${envMap["WAKE_WORD"] ?: ""}\"")
     }
 
     // Flavor configuration
@@ -49,6 +95,11 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+}
+
+// Hook envConfigTask into build lifecycle
+tasks.named("preBuild") {
+    dependsOn(envConfigTask)
 }
 
 dependencies {
