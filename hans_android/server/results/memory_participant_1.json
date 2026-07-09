@@ -21,8 +21,8 @@
     "command_history": [],
     "world_map": {
         "myright": {
-            "location": "Top Center, unknown depth",
-            "last_seen": "02:38:49 PM"
+            "location": "Bottom Right, unknown depth",
+            "last_seen": "11:39:55 AM"
         },
         "myleft": {
             "location": "Top Center, unknown depth",
@@ -41,8 +41,8 @@
             "last_seen": "02:17:25 PM"
         },
         "bottle": {
-            "location": "Bottom Left, unknown depth",
-            "last_seen": "02:18:05 PM"
+            "location": "Middle Center, unknown depth",
+            "last_seen": "11:39:55 AM"
         },
         "apple": {
             "location": "Middle Center, 0.53m",

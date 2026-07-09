@@ -401,7 +401,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     // =================================================================
     private fun setupSpeech() {
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            tvStatus.text = "Speech Recog Not Available"
+            tvStatus.text = "Speech Recognition Not Available"
             return
         }
 

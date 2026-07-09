@@ -34,6 +34,7 @@
     <string name="zero">0</string>
     <string name="direction">DIRECTION</string>
     <string name="calibration">Calibration</string>
-    <string name="volume">Use the volume buttons to adjust. Each press plays a tone and a short vibration matched to the new value.</string>
+    <string name="hundred">out of 100</string>
+    <string name="volume">Use the volume buttons to adjust the intensity. Each press plays a short vibration matched to the new value.</string>
 
 </resources>

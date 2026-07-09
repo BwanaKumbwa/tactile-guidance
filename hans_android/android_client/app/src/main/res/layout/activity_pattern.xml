@@ -188,22 +188,21 @@
         android:textSize="20sp"
         android:textColor="@android:color/black"
         android:background="@drawable/bg_default"
-        android:backgroundTint="@null"
         android:layout_marginHorizontal="24dp"
         android:layout_marginBottom="30dp"
         app:layout_constraintBottom_toTopOf="@id/bottomNavigation"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>
 
-    <!-- Bottom Navigation -->
+    <!-- BOTTOM NAV -->
     <com.google.android.material.bottomnavigation.BottomNavigationView
         android:id="@+id/bottomNavigation"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:background="#4EB92B"
         app:menu="@menu/bottom_nav_menu"
-        app:itemIconTint="@color/bottom_nav_icon"
-        app:itemTextColor="@color/bottom_nav_text"
+        app:itemIconTint="@drawable/bottom_nav"
+        app:itemTextColor="@drawable/bottom_nav"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>

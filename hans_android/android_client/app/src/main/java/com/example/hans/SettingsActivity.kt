@@ -42,7 +42,7 @@ class SettingsActivity : AppCompatActivity() {
         // Find the button
         val intensityButton = findViewById<RelativeLayout>(R.id.button_intensity)
 
-        // When clicked → go to IntensityActivity
+        // When clicked → go to FullIntensityActivity
         intensityButton.setOnClickListener {
             startActivity(
                 Intent(this, FullIntensityActivity::class.java)

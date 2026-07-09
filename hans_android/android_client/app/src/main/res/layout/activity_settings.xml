@@ -72,7 +72,7 @@
                 android:layout_toEndOf="@id/imgIntensity"
                 android:layout_toStartOf="@id/imgForwardIntensity"
                 android:layout_marginStart="16dp"
-                android:layout_marginEnd="16dp"
+                android:layout_marginEnd="10dp"
                 android:layout_centerVertical="true"
                 android:orientation="vertical">
 
@@ -141,7 +141,7 @@
                 android:layout_toEndOf="@id/imgPattern"
                 android:layout_toStartOf="@id/imgForwardPattern"
                 android:layout_marginStart="16dp"
-                android:layout_marginEnd="16dp"
+                android:layout_marginEnd="10dp"
                 android:layout_centerVertical="true"
                 android:orientation="vertical">
 
@@ -173,15 +173,15 @@
 
     </com.google.android.material.card.MaterialCardView>
 
-    <!-- Bottom Navigation -->
+    <!-- BOTTOM NAV -->
     <com.google.android.material.bottomnavigation.BottomNavigationView
         android:id="@+id/bottomNavigation"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:background="#32B000"
-        app:itemIconTint="@color/bottom_nav_icon"
-        app:itemTextColor="@color/bottom_nav_text"
+        android:background="#4EB92B"
         app:menu="@menu/bottom_nav_menu"
+        app:itemIconTint="@drawable/bottom_nav"
+        app:itemTextColor="@drawable/bottom_nav"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>

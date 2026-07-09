@@ -68,7 +68,7 @@
         android:id="@+id/outOf"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="out of 100"
+        android:text="@string/hundred"
         android:textSize="16sp"
         android:textColor="#666"
         app:layout_constraintTop_toBottomOf="@id/calibrationValue"
@@ -122,15 +122,15 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>
 
-    <!-- Bottom Navigation -->
+    <!-- BOTTOM NAV -->
     <com.google.android.material.bottomnavigation.BottomNavigationView
         android:id="@+id/bottomNavigation"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:background="#4EB92B"
         app:menu="@menu/bottom_nav_menu"
-        app:itemIconTint="@color/bottom_nav_icon"
-        app:itemTextColor="@color/bottom_nav_text"
+        app:itemIconTint="@drawable/bottom_nav"
+        app:itemTextColor="@drawable/bottom_nav"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>
