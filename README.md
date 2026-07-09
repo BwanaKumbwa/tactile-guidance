@@ -167,7 +167,7 @@ conda activate hans_android
 ```bash
 cp .env.example .env
 # Edit .env with your API credentials and settings
-# Copy the .env to auditory_interface
+# SERVER_IP should correspond to your IPv4 address. On Windows, it can be obtained by running ipconfig command in the Command Prompt.
 ```
 
 4. **Open 'android_client' folder in Android Studio**
@@ -180,11 +180,7 @@ In Android Studio, select a build variant (Build -> Select Build Variant...) cor
 The application UI is the same for both options.
 If ARCore is enabled, depth maps are estimated using it and sent directly from the smarthpone to the server.
 
-6. **Adjust IP in the Kotlin app**
-In the MainActivity.kt corresponding to your deployment (hans_android/android_client/app/src/noArcore or withArcore/...), update SERVER_IP with your IPv4 address.
-On Windows, it can be obtained by running ipconfig command in the Command Prompt.
-
-7. **Always run the server first, then the app**
+6. **Always run the server first, then the app**
 
 ## Usage
 
