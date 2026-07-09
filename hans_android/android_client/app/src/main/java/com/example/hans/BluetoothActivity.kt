@@ -2,6 +2,7 @@ package com.example.hans
 
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.widget.ImageView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -12,9 +13,10 @@ import androidx.constraintlayout.widget.ConstraintLayout
 class BluetoothActivity : AppCompatActivity() {
 
     // BLE MAC Addresses
-    private val MAC_BRACELET = "00:A0:50:65:73:20" // UPDATE
-    private val MAC_BELT     = "00:A0:50:39:96:11" // UPDATE
+    private val MAC_BRACELET = BuildConfig.MAC_BRACELET
+    private val MAC_BELT     = BuildConfig.MAC_BELT
 
+    // Use singleton instead of local instances
     private lateinit var braceletManager: BleManager
     private lateinit var beltManager: BleManager
 
@@ -32,9 +34,9 @@ class BluetoothActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_bluetooth)
 
-        // 1. Initialize BLE Managers
-        braceletManager = BleManager(this)
-        beltManager = BleManager(this)
+        // Get singleton instances
+        braceletManager = BleManagerSingleton.getBraceletManager(this)
+        beltManager = BleManagerSingleton.getBeltManager(this)
 
         bottomNav = findViewById(R.id.bottomNavigation)
 
@@ -143,6 +145,8 @@ class BluetoothActivity : AppCompatActivity() {
                     braceletConnected = braceletManager.isConnected()
                 }
 
+                Log.d("HANS", "✓ Bracelet: $braceletConnected, Belt: $beltConnected")
+
                 runOnUiThread {
                     isConnecting = false
 
@@ -234,7 +238,7 @@ class BluetoothActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        braceletManager.disconnect()
-        beltManager.disconnect()
+        // Don't disconnect here! Keep connection alive for MainActivity
+        // Only disconnect when app truly closes
     }
 }

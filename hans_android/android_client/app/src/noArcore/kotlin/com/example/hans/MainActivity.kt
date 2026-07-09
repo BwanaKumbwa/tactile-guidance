@@ -42,14 +42,14 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     // =================================================================
     // CONFIGURATION
     // =================================================================
-    private val SERVER_IP = "192.168.178.33" // UPDATE
+    private val SERVER_IP = BuildConfig.SERVER_IP
     private val WEBSOCKET_URL = "ws://$SERVER_IP:8000/ws/video"
     private val COMMAND_URL = "http://$SERVER_IP:8000/api/command"
-    private val WAKE_WORD = "hans"
+    private val WAKE_WORD = BuildConfig.WAKE_WORD
 
     // BLUETOOTH MAC ADDRESSES
-    private val MAC_BRACELET = "00:A0:50:65:73:20" // UPDATE
-    private val MAC_BELT     = "00:A0:50:39:96:11" // UPDATE
+    private val MAC_BRACELET = BuildConfig.MAC_BRACELET
+    private val MAC_BELT     = BuildConfig.MAC_BELT
     // =================================================================
 
     // UI Components

@@ -48,14 +48,14 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
     // =================================================================
     // CONFIGURATION
     // =================================================================
-    private val SERVER_IP = "" // UPDATE
+    private val SERVER_IP = BuildConfig.SERVER_IP
     private val WEBSOCKET_URL = "ws://$SERVER_IP:8000/ws/video"
     private val COMMAND_URL = "http://$SERVER_IP:8000/api/command"
-    private val WAKE_WORD = "hans"
+    private val WAKE_WORD = BuildConfig.WAKE_WORD
 
     // BLUETOOTH MAC ADDRESSES
-    private val MAC_BRACELET = "00:A0:50:93:8A:AA" // UPDATE
-    private val MAC_BELT     = "00:A0:50:DA:2B:54" // UPDATE
+    private val MAC_BRACELET = BuildConfig.MAC_BRACELET
+    private val MAC_BELT     = BuildConfig.MAC_BELT
     // =================================================================
 
     // UI Components
@@ -66,11 +66,9 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
     private lateinit var btnPtt: Button
 
     // PTT State
-    // true only while the PTT button is physically held down.
-    // Both PTT and wake-word detection coexist — this flag tells onResults which path to take.
     @Volatile private var isPttRecording = false
-    private val PTT_COLOR_IDLE   = android.graphics.Color.parseColor("#CC2196F3") // Blue
-    private val PTT_COLOR_ACTIVE = android.graphics.Color.parseColor("#CCCC0000") // Red
+    private val PTT_COLOR_IDLE   = android.graphics.Color.parseColor("#CC2196F3")
+    private val PTT_COLOR_ACTIVE = android.graphics.Color.parseColor("#CCCC0000")
 
     // ARCore Session
     private var arSession: Session? = null
@@ -89,7 +87,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
     private lateinit var tts: TextToSpeech
     private lateinit var audioManager: AudioManager
 
-    // Bluetooth Managers
+    // ✅ Bluetooth Managers - NOW FROM SINGLETON
     private lateinit var braceletManager: BleManager
     private lateinit var beltManager: BleManager
 
@@ -118,9 +116,12 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
         surfaceView.setRenderer(this)
         surfaceView.renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
 
-        // BLE
-        braceletManager = BleManager(this)
-        beltManager     = BleManager(this)
+        // BLE - Get singleton instances (already connected from BluetoothActivity)
+        braceletManager = BleManagerSingleton.getBraceletManager(this)
+        beltManager = BleManagerSingleton.getBeltManager(this)
+
+        Log.d("HANS", "✓ Bracelet manager obtained: ${braceletManager.isConnected()}")
+        Log.d("HANS", "✓ Belt manager obtained: ${beltManager.isConnected()}")
 
         // Permissions
         if (allPermissionsGranted()) {
@@ -161,9 +162,8 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
 
     private fun initSystem() {
         startWebSocket()
-        setupSpeech()      // Starts background wake-word listening
-        setupPttButton()   // Adds PTT as an additional input method
-        connectBleDevices()
+        setupSpeech()
+        setupPttButton()
     }
 
     // =================================================================
@@ -181,7 +181,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
             try {
                 depthImage = frame.acquireDepthImage16Bits()
             } catch (e: Exception) {
-                // Depth not ready yet — log once
                 Log.d("HANS", "Depth initializing... move phone around to help")
             }
 
@@ -190,16 +189,14 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
             var depthBytes = ByteArray(0)
             if (depthImage != null) {
                 depthBytes = depth16ToPngBytes(depthImage)
-                
-                // Only send if depth has actual data (not all zeros)
+
                 val hasDepthData = depthBytes.size > 100 && !isDepthAllZeros(depthBytes)
                 if (!hasDepthData) {
                     Log.d("HANS", "Depth detected but empty, waiting...")
-                    depthBytes = ByteArray(0) // Fall back to empty
+                    depthBytes = ByteArray(0)
                 }
             }
 
-            // Protocol: [4 bytes: RGB length][RGB bytes][Depth bytes]
             val buffer = ByteBuffer.allocate(4 + rgbBytes.size + depthBytes.size)
             buffer.putInt(rgbBytes.size)
             buffer.put(rgbBytes)
@@ -216,7 +213,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
     }
 
     private fun isDepthAllZeros(depthBytes: ByteArray): Boolean {
-        // Sample the middle of the depth frame
         val sampleSize = minOf(1000, depthBytes.size)
         val sample = depthBytes.takeLast(sampleSize)
         return sample.all { it == 0.toByte() }
@@ -224,21 +220,19 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
 
     override fun onResume() {
         super.onResume()
-        
-        // Try to get the pre-warmed session first (with type cast)
+
         val prewarmSession = ArCoreManager.resume()
         if (prewarmSession != null) {
             @Suppress("UNCHECKED_CAST")
             arSession = prewarmSession as? Session
         }
-        
-        // Fallback: if warmup didn't complete yet, initialize normally
+
         if (arSession == null && allPermissionsGranted()) {
             try {
                 if (ArCoreApk.getInstance().requestInstall(this, true) == ArCoreApk.InstallStatus.INSTALLED) {
                     arSession = Session(this)
                     val config = Config(arSession)
-                    
+
                     if (arSession!!.isDepthModeSupported(Config.DepthMode.AUTOMATIC)) {
                         config.depthMode = Config.DepthMode.AUTOMATIC
                         Log.i("HANS", "ARCore Depth Mode Enabled (fallback init)")
@@ -251,7 +245,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                 Log.e("HANS", "ARCore fallback init failed: $e")
             }
         }
-        
+
         try {
             arSession?.resume()
             surfaceView.onResume()
@@ -350,7 +344,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                 pixels[pixelIndex] = if (distanceMm == 0) {
                     android.graphics.Color.rgb(0, 0, 0)
                 } else {
-                    // Pack 16-bit depth into R and G channels
                     val r = (distanceMm shr 8) and 0xFF
                     val g = distanceMm and 0xFF
                     android.graphics.Color.rgb(r, g, 0)
@@ -370,14 +363,11 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
             tts.language = Locale.US
-            //tts.setPitch(0.6f)           // Lower pitch (0.5-2.0, default 1.0)
-            //tts.setSpeechRate(0.9f)      // Slightly slower (0.5-2.0, default 1.0)
             tts.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) {}
 
                 override fun onDone(utteranceId: String?) {
                     Log.d("HANS", "TTS finished — resuming background listening.")
-                    // Resume background wake-word listening after TTS finishes in both modes
                     restartListening()
                 }
 
@@ -387,29 +377,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                 }
             })
         }
-    }
-
-    // =================================================================
-    // BLUETOOTH
-    // =================================================================
-    private fun connectBleDevices() {
-        Thread {
-            try {
-                braceletManager.connect(MAC_BRACELET)
-                Thread.sleep(2000)
-                braceletManager.writeRawCommand(ByteArray(0))
-            } catch (e: Exception) { Log.e("HANS", "Bracelet Connect Error", e) }
-        }.start()
-
-        Thread {
-            try {
-                beltManager.connect(MAC_BELT)
-                Thread.sleep(2000)
-                beltManager.writeRawCommand(ByteArray(0))
-            } catch (e: Exception) { Log.e("HANS", "Belt Connect Error", e) }
-        }.start()
-
-        runOnUiThread { tvStatus.text = "Status: Connecting BLE..." }
     }
 
     // =================================================================
@@ -442,13 +409,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                     } else if (text.startsWith("{")) {
                         val jsonObj = JSONObject(text)
 
-                        if (jsonObj.has("vibration_command")) {
-                            val b64Command = jsonObj.getString("vibration_command")
-                            val commandBytes = Base64.decode(b64Command, Base64.NO_WRAP)
-                            braceletManager.writeRawCommand(commandBytes)
-                            beltManager.writeRawCommand(commandBytes)
-                        }
-
                         if (jsonObj.has("system_command")) {
                             when (jsonObj.getString("system_command")) {
                                 "idle_mode" -> {
@@ -470,18 +430,34 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                                 tts.speak(msg, TextToSpeech.QUEUE_ADD, params, "TTS_CMD")
                             }
                         }
+
+                        if (jsonObj.has("vibration_command")) {
+                            val b64Command = jsonObj.getString("vibration_command")
+                            val commandBytes = Base64.decode(b64Command, Base64.NO_WRAP)
+
+                            // Clean routing without duplicate parsing blocks
+                            val targetDevice = jsonObj.optString("target_device", "all")
+                            Log.d("HANS", "📡 Routing command to: $targetDevice")
+
+                            when (targetDevice) {
+                                "belt" -> beltManager.writeRawCommand(commandBytes)
+                                "bracelet" -> braceletManager.writeRawCommand(commandBytes)
+                                else -> {
+                                    beltManager.writeRawCommand(commandBytes)
+                                    braceletManager.writeRawCommand(commandBytes)
+                                }
+                            }
+                        }
                     }
-                } catch (e: Exception) { /* ignore parse errors */ }
+                } catch (e: Exception) {
+                    Log.e("HANS", "WebSocket parse error: ${e.message}")
+                }
             }
         })
     }
 
     // =================================================================
     // PUSH-TO-TALK
-    // Wake-word background listening always runs. Holding the button
-    // cancels the current session, records a PTT utterance, and sends
-    // it directly — no wake word required. After the response, background
-    // listening resumes automatically.
     // =================================================================
     private fun setupPttButton() {
         resetPttButton()
@@ -512,21 +488,17 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
             btnPtt.setBackgroundColor(PTT_COLOR_ACTIVE)
         }
 
-        // Destroy the background recognizer
         try {
             speechRecognizer.cancel()
             speechRecognizer.destroy()
-            Log.d("HANS", "Background recognizer destroyed")
         } catch (e: Exception) {
             Log.e("HANS", "Recognizer destroy failed: $e")
         }
 
-        // Wait for audio system to fully reset
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
             if (!isPttRecording) return@postDelayed
 
             try {
-                // Create a NEW recognizer for PTT
                 speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this@MainActivity)
                 speechRecognizer.setRecognitionListener(object : RecognitionListener {
                     override fun onReadyForSpeech(params: Bundle?) {
@@ -537,12 +509,10 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                     override fun onBufferReceived(buffer: ByteArray?) {}
                     override fun onEndOfSpeech() {}
                     override fun onError(error: Int) {
-                        Log.e("HANS", "PTT error: $error")
                         val msg = when (error) {
-                            SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No speech detected — try again"
-                            SpeechRecognizer.ERROR_NO_MATCH       -> "Couldn't understand — try again"
-                            SpeechRecognizer.ERROR_AUDIO          -> "Mic error — try again"
-                            else                                  -> "Error ($error) — try again"
+                            SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No speech detected"
+                            SpeechRecognizer.ERROR_NO_MATCH       -> "Couldn't understand"
+                            else                                  -> "Error ($error)"
                         }
                         runOnUiThread { tvStatus.text = msg }
                         resetPttButton()
@@ -557,57 +527,42 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                                 runOnUiThread { tvAiResponse.text = "Processing: \"$spokenText\"" }
                                 sendToBackend(spokenText)
                             } else {
-                                runOnUiThread { tvStatus.text = "Nothing heard — try again" }
                                 restartListening()
                             }
                         }
                     }
-                    override fun onPartialResults(partialResults: Bundle?) {
-                        val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                        if (!partial.isNullOrEmpty() && partial[0].isNotBlank()) {
-                            runOnUiThread { tvAiResponse.text = "Hearing: \"${partial[0]}\"" }
-                        }
-                    }
+                    override fun onPartialResults(partialResults: Bundle?) {}
                     override fun onEvent(eventType: Int, params: Bundle?) {}
                 })
 
                 audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_MUTE, 0)
                 speechRecognizer.startListening(speechIntent)
-                Log.d("HANS", "PTT listening started (new recognizer)")
-
                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                     audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_UNMUTE, 0)
                 }, 300)
             } catch (e: Exception) {
-                Log.e("HANS", "PTT start failed: $e")
                 isPttRecording = false
                 resetPttButton()
                 restartListening()
             }
-        }, 800) // Increased delay to allow audio shutdown
+        }, 800)
     }
 
     private fun stopPttRecording() {
-        // Keep isPttRecording = true until onResults/onError fires so that
-        // the recognition callback knows which path to take.
         runOnUiThread {
             tvStatus.text = "Status: Processing..."
             btnPtt.text   = "Processing..."
             btnPtt.isEnabled = false
         }
         try {
-            // stopListening() finalises the utterance and triggers onResults
-            // — unlike cancel() which discards it.
             speechRecognizer.stopListening()
         } catch (e: Exception) {
-            Log.e("HANS", "PTT stop failed: $e")
             isPttRecording = false
             runOnUiThread { resetPttButton() }
             restartListening()
         }
     }
 
-    /** Restores button to idle state. Safe to call from any thread. */
     private fun resetPttButton() {
         runOnUiThread {
             isPttRecording   = false
@@ -635,60 +590,33 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                         "Status: Listening for '$WAKE_WORD'..."
                 }
             }
-
             override fun onBeginningOfSpeech() {}
             override fun onRmsChanged(rmsdB: Float) {}
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onEndOfSpeech() {}
-
             override fun onError(error: Int) {
-                if (isPttRecording) {
-                    val msg = when (error) {
-                        SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No speech detected — try again"
-                        SpeechRecognizer.ERROR_NO_MATCH       -> "Couldn't understand — try again"
-                        SpeechRecognizer.ERROR_AUDIO          -> "Mic error — try again"
-                        else                                  -> "Mic error ($error) — try again"
-                    }
-                    runOnUiThread { tvStatus.text = msg }
-                    resetPttButton()
-                }
+                if (isPttRecording) resetPttButton()
                 restartListening()
             }
-
             override fun onResults(results: Bundle?) {
                 val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 if (!matches.isNullOrEmpty()) {
                     val spokenText = matches[0].lowercase().trim()
-
                     if (isPttRecording) {
                         resetPttButton()
                         if (spokenText.isNotBlank()) {
                             runOnUiThread { tvAiResponse.text = "Processing: \"$spokenText\"" }
                             sendToBackend(spokenText)
-                        } else {
-                            runOnUiThread { tvStatus.text = "Nothing heard — try again" }
-                            restartListening()
-                        }
+                        } else restartListening()
                     } else {
                         if (spokenText.contains(WAKE_WORD)) {
                             runOnUiThread { tvAiResponse.text = "Processing: $spokenText" }
                             sendToBackend(spokenText)
-                        } else {
-                            restartListening()
-                        }
+                        } else restartListening()
                     }
                 }
             }
-
-            override fun onPartialResults(partialResults: Bundle?) {
-                if (isPttRecording) {
-                    val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                    if (!partial.isNullOrEmpty() && partial[0].isNotBlank()) {
-                        runOnUiThread { tvAiResponse.text = "Hearing: \"${partial[0]}\"" }
-                    }
-                }
-            }
-
+            override fun onPartialResults(partialResults: Bundle?) {}
             override fun onEvent(eventType: Int, params: Bundle?) {}
         }
 
@@ -700,10 +628,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-US")
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "en-US")
-            putExtra(RecognizerIntent.EXTRA_ONLY_RETURN_LANGUAGE_PREFERENCE, true)
         }
-
         startListeningMuted()
     }
 
@@ -734,16 +659,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
         }
     }
 
-    private fun toggleListening() {
-        if (isListening) {
-            speechRecognizer.stopListening()
-            isListening = false
-        } else {
-            speechRecognizer.startListening(speechIntent)
-            isListening = true
-        }
-    }
-
     // =================================================================
     // BACKEND COMMUNICATION
     // =================================================================
@@ -758,13 +673,11 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
         val request = Request.Builder().url(COMMAND_URL).post(body).build()
 
         client.newCall(request).enqueue(object : Callback {
-
             override fun onFailure(call: Call, e: IOException) {
                 runOnUiThread { tvAiResponse.text = "AI Error: Network Fail" }
-                resetPttButton()   // safe even if PTT was not active
+                resetPttButton()
                 restartListening()
             }
-
             override fun onResponse(call: Call, response: Response) {
                 val responseData = response.body?.string()
                 if (responseData != null) {
@@ -772,7 +685,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                         val jsonRes = JSONObject(responseData)
                         var answer  = jsonRes.optString("answer", "Done")
 
-                        // Speech rate tags
                         when {
                             answer.contains("[SPEED:SLOW]")   -> { tts.setSpeechRate(0.5f); answer = answer.replace("[SPEED:SLOW]", "") }
                             answer.contains("[SPEED:NORMAL]") -> { tts.setSpeechRate(1.0f); answer = answer.replace("[SPEED:NORMAL]", "") }
@@ -803,7 +715,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                             val params = Bundle()
                             params.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "TTS_REPLY")
                             tts.speak(answer, TextToSpeech.QUEUE_FLUSH, params, "TTS_REPLY")
-                            // TTS onDone → restartListening() — no manual restart needed here
                         }
 
                     } catch (e: Exception) {
@@ -856,8 +767,8 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
         super.onDestroy()
         ArCoreManager.destroy()
         webSocket?.close(1000, "App closed")
-        braceletManager.disconnect()
-        beltManager.disconnect()
+        // Disconnect all BLE devices when app closes
+        BleManagerSingleton.disconnectAll()
         try { speechRecognizer.destroy() } catch (e: Exception) {}
         if (::tts.isInitialized) { tts.stop(); tts.shutdown() }
     }

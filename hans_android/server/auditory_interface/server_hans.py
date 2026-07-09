@@ -3,11 +3,9 @@ import os
 import re
 import json
 import requests
+from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv(override=True)
 
 # Reroute stdout to prevent breaking MCP JSON-RPC pipe
 original_stdout = sys.stdout
@@ -16,6 +14,10 @@ sys.stdout = sys.stderr
 mcp = FastMCP("HANS-Controller")
 
 # Custom API configuration (matching query_processing.py)
+ENV_DIR = Path(__file__).resolve().parents[2]
+load_dotenv(ENV_DIR / '.env', override=True)
+#load_dotenv(override=True)
+
 API_URL = os.getenv("API_URL")
 API_KEY = os.getenv("API_KEY")
 LLM_MODEL = os.getenv("LLM_MODEL", "openai/gpt-oss-120b")

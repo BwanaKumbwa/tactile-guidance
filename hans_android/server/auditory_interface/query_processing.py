@@ -5,8 +5,6 @@ from pathlib import Path
 from mcp import ClientSession
 from dotenv import load_dotenv
 
-load_dotenv(override=True)
-
 # Markdown loader
 def load_markdown_file(filename: str) -> str:
     """Load markdown content from project root."""
@@ -23,6 +21,10 @@ SKILLS = load_markdown_file("SKILLS.md")
 AGENTS = load_markdown_file("AGENTS.md")
 
 # Custom API configuration (matching server_hans.py)
+ENV_DIR = Path(__file__).resolve().parents[2]
+load_dotenv(ENV_DIR / '.env', override=True)
+#load_dotenv(override=True)
+
 API_URL = os.getenv("API_URL")
 API_KEY = os.getenv("API_KEY")
 LLM_MODEL = os.getenv("LLM_MODEL", "openai/gpt-oss-120b")
@@ -152,9 +154,30 @@ class HANSBrain:
                 )
                 response.raise_for_status()
                 return response.json()
+            
             except httpx.HTTPStatusError as e:
-                print(f"   [ERROR] LLM API Error: {e.status_code}")
-                print(f"   [DEBUG] Response: {e.response.text}")
+                # Access status_code via e.response
+                status_code = e.response.status_code
+                error_body = e.response.text
+                
+                print(f"   [ERROR] LLM API Error: HTTP {status_code}")
+                print(f"   [DEBUG] Request URL: {e.request.url}")
+                print(f"   [DEBUG] Response Body: {error_body[:500]}...")  # Truncate for readability
+                
+                # Optional: Parse JSON error if available
+                try:
+                    error_json = e.response.json()
+                    print(f"   [DEBUG] Parsed Error: {json.dumps(error_json, indent=2)}")
+                except:
+                    pass
+                
+                raise  # Re-raise the exception
+            
+            except httpx.TimeoutException:
+                print(f"   [ERROR] Request timed out after 30s")
+                raise
+            except httpx.ConnectError:
+                print(f"   [ERROR] Connection failed. Check if API URL is reachable.")
                 raise
 
     async def process_query(

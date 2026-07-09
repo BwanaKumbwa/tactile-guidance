@@ -23,7 +23,10 @@ for path in ['/yolov5', '/strongsort', '/unidepth', '/midas']:
         sys.path.append(str(root) + path)
 
 from android_loader import AndroidSource
-from virtual_belt import VirtualBeltController
+#from virtual_belt import VirtualBeltController
+#from feedback_devices import BeltAdapter, MockFeedbackDevice, VirtualBeltController
+from feedback_devices import BeltAdapter, BraceletAdapter
+from feedback_devices import VirtualBeltController
 import master 
 from query_processing import HANSBrain
 from mcp.client.stdio import stdio_client
@@ -189,7 +192,22 @@ def run_ai_logic():
     print("🧠 AI Vision Thread Started")
     android_loader = AndroidSource(frame_queue, img_size=640)
     args = SimArgs()
-    virtual_belt = VirtualBeltController(result_queue)
+    
+    # ✅ 1. Create TWO distinct routing controllers
+    belt_vbc = VirtualBeltController(result_queue, target_device="belt")
+    bracelet_vbc = VirtualBeltController(result_queue, target_device="bracelet")
+
+    # ✅ Create a dummy sink so legacy master.py logic doesn't override our belt adapter
+    dummy_legacy_belt = VirtualBeltController(result_queue=None)
+    
+    # ✅ 2. Pass the specific controllers to their respective adapters
+    belt = BeltAdapter(belt_vbc)
+    bracelet = BraceletAdapter(bracelet_vbc, vibration_intensities={'left': 50, 'right': 50})
+    
+    belt.connect()
+    bracelet.connect()
+    
+    feedback_devices = [belt, bracelet]
     
     try:
         master.run_experiment_logic(
@@ -198,11 +216,17 @@ def run_ai_logic():
             shared_state=shared_state,
             custom_loader=android_loader,
             result_queue=result_queue,
-            custom_belt=virtual_belt,
+            custom_belt=dummy_legacy_belt,  # MUST use dummy so legacy logic doesn't mute the belt
+            feedback_devices=feedback_devices,
             deployment_mode=DEPLOYMENT_MODE
         )
     except Exception as e:
         print(f"❌ Error in AI Loop: {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        belt.disconnect()
+        bracelet.disconnect()
 
 # Lifecycle (MCP startup)
 @asynccontextmanager
