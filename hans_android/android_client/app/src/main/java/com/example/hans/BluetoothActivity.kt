@@ -10,8 +10,8 @@ import androidx.appcompat.app.AppCompatActivity
 class BluetoothActivity : AppCompatActivity() {
 
     // BLE MAC Addresses
-    private val MAC_BRACELET = "00:A0:50:93:8A:AA"
-    private val MAC_BELT     = "00:A0:50:DA:2B:54"
+    private val MAC_BRACELET = BuildConfig.MAC_BRACELET
+    private val MAC_BELT     = BuildConfig.MAC_BELT
 
     // Use singleton instead of local instances
     private lateinit var braceletManager: BleManager
