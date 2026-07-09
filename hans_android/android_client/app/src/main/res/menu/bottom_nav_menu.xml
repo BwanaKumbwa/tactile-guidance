@@ -1,0 +1,18 @@
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item
+        android:id="@+id/menu_home"
+        android:icon="@drawable/home"
+        android:title="Home" />
+
+    <item
+        android:id="@+id/menu_camera"
+        android:icon="@drawable/camera"
+        android:title="Camera" />
+
+    <item
+        android:id="@+id/menu_setting"
+        android:icon="@drawable/setting"
+        android:title="Setting" />
+
+</menu>

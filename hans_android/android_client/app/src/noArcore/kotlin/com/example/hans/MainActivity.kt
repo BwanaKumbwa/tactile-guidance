@@ -1,13 +1,10 @@
 package com.example.hans
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.ImageFormat
-import android.graphics.Rect
-import android.graphics.YuvImage
 import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
@@ -19,7 +16,7 @@ import android.util.Base64
 import android.util.Log
 import android.view.MotionEvent
 import android.widget.Button
-import android.widget.ImageView
+import android.widget.ImageButton
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -27,19 +24,18 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.content.ContextCompat
+import com.google.android.material.bottomnavigation.BottomNavigationView
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
-import okio.ByteString.Companion.toByteString
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.IOException
-import java.nio.ByteBuffer
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
-import java.util.Locale
 
 class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
@@ -61,7 +57,9 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private lateinit var overlayView: OverlayView
     private lateinit var tvStatus: TextView
     private lateinit var tvAiResponse: TextView
-    private lateinit var btnPtt: Button
+    private lateinit var btnPtt: ConstraintLayout
+    private val PTT_COLOR_IDLE = R.drawable.circle_green
+    private val PTT_COLOR_ACTIVE = R.drawable.circle_red
     private lateinit var pttRecognitionListener: RecognitionListener
 
     private lateinit var cameraExecutor: ExecutorService
@@ -75,9 +73,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private var isListening = false
     private var speechIntent: android.content.Intent? = null
 
-    private val PTT_COLOR_IDLE   = android.graphics.Color.parseColor("#CC2196F3") // Blue
-    private val PTT_COLOR_ACTIVE = android.graphics.Color.parseColor("#CCCC0000") // Red
-
     @Volatile private var isPttRecording = false
 
     // Bluetooth Managers (One for each device)
@@ -87,6 +82,10 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private lateinit var tts: TextToSpeech
 
     private lateinit var audioManager: AudioManager
+
+    private val Intensity_Prefs = "FullIntensityPrefs"
+
+    private val Pattern_Prefs = "PatternPrefs"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -99,22 +98,31 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         overlayView = findViewById(R.id.overlayView)
         tvStatus = findViewById(R.id.tvStatus)
         tvAiResponse = findViewById(R.id.tvAiResponse)
-        btnPtt = findViewById(R.id.btnPtt)
+        btnPtt = findViewById(R.id.rootLayout)
 
-        // NAVIGATION ICONS (PUT HERE)
-        val homeIcon = findViewById<ImageView>(R.id.Home)
-        homeIcon.setOnClickListener {
-            startActivity(Intent(this, BluetoothActivity::class.java))
-        }
+        val bottomNav = findViewById<BottomNavigationView>(R.id.bottomNavigation)
 
-        val settingIcon = findViewById<ImageView>(R.id.Setting)
-        settingIcon.setOnClickListener {
-            startActivity(Intent(this, SettingsActivity::class.java))
-        }
+        bottomNav.selectedItemId = R.id.menu_camera
+        bottomNav.setOnItemSelectedListener { item ->
 
-        val cameraIcon = findViewById<ImageView>(R.id.Camera_command)
-        cameraIcon.setOnClickListener {
-            Toast.makeText(this, "Camera already active", Toast.LENGTH_SHORT).show()
+            when (item.itemId) {
+
+                R.id.menu_home -> {
+                    startActivity(Intent(this, BluetoothActivity::class.java))
+                    finish()
+                    true
+                }
+
+                R.id.menu_camera -> true
+
+                R.id.menu_setting -> {
+                    startActivity(Intent(this, SettingsActivity::class.java))
+                    finish()
+                    true
+                }
+
+                else -> false
+            }
         }
 
         // 2. Initialize BLE Managers
@@ -180,6 +188,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
                 override fun onDone(utteranceId: String?) {
                     // TTS finished speaking! Safe to start listening again.
+                    showStatus("🎤 Ready. Hold microphone to speak.")
                     Log.d("HANS", "TTS Finished. Resuming listening.")
                     restartListening()
                 }
@@ -392,7 +401,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     // =================================================================
     private fun setupSpeech() {
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            tvStatus.text = "Speech Recog Not Available"
+            tvStatus.text = "Speech Recognition Not Available"
             return
         }
 
@@ -499,111 +508,76 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private fun startPttRecording() {
         isPttRecording = true
 
-        if (::tts.isInitialized && tts.isSpeaking) tts.stop()
-
-        runOnUiThread {
-            tvStatus.text = "🔴 Recording... release to send"
-            btnPtt.text = "Release to Send"
-            btnPtt.setBackgroundColor(PTT_COLOR_ACTIVE)
+        if (::tts.isInitialized && tts.isSpeaking) {
+            tts.stop()
         }
 
-        // Destroy the background recognizer
+        runOnUiThread {
+            btnPtt.setBackgroundResource(PTT_COLOR_ACTIVE)
+        }
+
+        showStatus("Recording... Release to Send")
+
         try {
             speechRecognizer.cancel()
             speechRecognizer.destroy()
-            Log.d("HANS", "Background recognizer destroyed")
-        } catch (e: Exception) {
-            Log.e("HANS", "Recognizer destroy failed: $e")
+        } catch (_: Exception) {
         }
 
-        // Wait for audio system to fully reset
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+
             if (!isPttRecording) return@postDelayed
 
+            speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
+            speechRecognizer.setRecognitionListener(pttRecognitionListener)
+
             try {
-                // Create a NEW recognizer for PTT
-                speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this@MainActivity)
-                speechRecognizer.setRecognitionListener(object : RecognitionListener {
-                    override fun onReadyForSpeech(params: Bundle?) {
-                        runOnUiThread { tvStatus.text = "🔴 Listening..." }
-                    }
-                    override fun onBeginningOfSpeech() {}
-                    override fun onRmsChanged(rmsdB: Float) {}
-                    override fun onBufferReceived(buffer: ByteArray?) {}
-                    override fun onEndOfSpeech() {}
-                    override fun onError(error: Int) {
-                        Log.e("HANS", "PTT error: $error")
-                        val msg = when (error) {
-                            SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No speech detected — try again"
-                            SpeechRecognizer.ERROR_NO_MATCH       -> "Couldn't understand — try again"
-                            SpeechRecognizer.ERROR_AUDIO          -> "Mic error — try again"
-                            else                                  -> "Error ($error) — try again"
-                        }
-                        runOnUiThread { tvStatus.text = msg }
-                        resetPttButton()
-                        restartListening()
-                    }
-                    override fun onResults(results: Bundle?) {
-                        val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                        if (!matches.isNullOrEmpty()) {
-                            val spokenText = matches[0].lowercase().trim()
-                            resetPttButton()
-                            if (spokenText.isNotBlank()) {
-                                runOnUiThread { tvAiResponse.text = "Processing: \"$spokenText\"" }
-                                sendToBackend(spokenText)
-                            } else {
-                                runOnUiThread { tvStatus.text = "Nothing heard — try again" }
-                                restartListening()
-                            }
-                        }
-                    }
-                    override fun onPartialResults(partialResults: Bundle?) {
-                        val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                        if (!partial.isNullOrEmpty() && partial[0].isNotBlank()) {
-                            runOnUiThread { tvAiResponse.text = "Hearing: \"${partial[0]}\"" }
-                        }
-                    }
-                    override fun onEvent(eventType: Int, params: Bundle?) {}
-                })
-
-                audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_MUTE, 0)
                 speechRecognizer.startListening(speechIntent)
-                Log.d("HANS", "PTT listening started (new recognizer)")
-
-                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                    audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_UNMUTE, 0)
-                }, 300)
             } catch (e: Exception) {
-                Log.e("HANS", "PTT start failed: $e")
-                isPttRecording = false
+                e.printStackTrace()
+                showStatus("❌ Failed to start recording")
                 resetPttButton()
                 restartListening()
             }
-        }, 800)
+
+        }, 500)
     }
 
     private fun stopPttRecording() {
+
         runOnUiThread {
-            tvStatus.text = "Status: Processing..."
-            btnPtt.text = "Processing..."
             btnPtt.isEnabled = false
         }
+
+        showStatus("Processing command...")
+
         try {
             speechRecognizer.stopListening()
         } catch (e: Exception) {
-            Log.e("HANS", "PTT stop failed: $e")
-            isPttRecording = false
-            runOnUiThread { resetPttButton() }
+            e.printStackTrace()
+            showStatus("❌ Failed to process")
+            resetPttButton()
             restartListening()
         }
     }
 
     private fun resetPttButton() {
+
+        isPttRecording = false
+
         runOnUiThread {
-            isPttRecording = false
-            btnPtt.text = "Hold to Speak"
+
             btnPtt.isEnabled = true
-            btnPtt.setBackgroundColor(PTT_COLOR_IDLE)
+            btnPtt.setBackgroundResource(PTT_COLOR_IDLE)
+        }
+
+        showStatus("Press screen to speak")
+    }
+
+    private fun showStatus(message: String) {
+        runOnUiThread {
+            tvStatus.text = message
+            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -653,6 +627,8 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
         json.put("bracelet_connected", braceletManager.isConnected())
         json.put("belt_connected", beltManager.isConnected())
+        json.put("vibration", loadIntensity())
+        json.put("pattern", loadPattern())
 
         val body = json.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
         val request = Request.Builder().url(COMMAND_URL).post(body).build()
@@ -702,6 +678,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
                         runOnUiThread {
                             tvAiResponse.text = "AI: $answer"
+                            showStatus("🤖 AI is speaking...")
 
                             // Speak the text, and pass an ID ("TTS_REPLY") so
                             // onDone() knows when to restart the microphone.
@@ -753,6 +730,27 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 finish()
             }
         }
+
+    private fun loadIntensity(): JSONObject{
+        val prefs = getSharedPreferences(Intensity_Prefs, Context.MODE_PRIVATE)
+
+        val vibration = JSONObject()
+        vibration.put("left", prefs.getInt("leftIntensity", 0))
+        vibration.put("down", prefs.getInt("bottomIntensity", 0))
+        vibration.put("right", prefs.getInt("rightIntensity", 0))
+        vibration.put("top", prefs.getInt("topIntensity", 0))
+        vibration.put("top_front", prefs.getInt("topFrontIntensity", 0))
+        vibration.put("top_back", prefs.getInt("topBackIntensity", 0))
+        vibration.put("belt", prefs.getInt("beltIntensity", 0))
+
+        return vibration
+    }
+
+    private fun loadPattern(): String{
+        val prefs = getSharedPreferences(Pattern_Prefs, MODE_PRIVATE)
+
+        return prefs.getString("PATTERN_CODE","VIB_PATTERN_SINGLE") ?: "VIB_PATTERN_SINGLE"
+    }
 
     override fun onDestroy() {
         super.onDestroy()
