@@ -57,9 +57,20 @@ class CameraRenderer {
             position(0)
         }
 
+    private val defaultTexCoords = floatArrayOf(
+        0.0f, 1.0f,
+        0.0f, 0.0f,
+        1.0f, 1.0f,
+        1.0f, 0.0f
+    )
+
     private val texBuffer: FloatBuffer = ByteBuffer.allocateDirect(8 * 4)
         .order(ByteOrder.nativeOrder())
         .asFloatBuffer()
+        .apply {
+            put(defaultTexCoords)
+            position(0)
+        }
 
     fun createOnGlThread() {
         // 1. Generate an OES Texture ID
