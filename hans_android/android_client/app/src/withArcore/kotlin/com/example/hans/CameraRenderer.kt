@@ -31,15 +31,15 @@ class CameraRenderer {
     """.trimIndent()
 
     // Fragment shader: Converts hardware OES (YUV) to RGB pixels
-    private val fragmentShaderCode = """
-        #extension GL_OES_EGL_image_external : require
-        precision mediump float;
-        varying vec2 v_TexCoord;
-        uniform samplerExternalOES u_Texture;
-        void main() {
-            gl_FragColor = texture2D(u_Texture, v_TexCoord);
-        }
-    """.trimIndent()
+    // Hand-concatenated to guarantee #extension is the absolute first character for strict IMG compilers
+    private val fragmentShaderCode =
+        "#extension GL_OES_EGL_image_external : require\n" +
+                "precision mediump float;\n" +
+                "varying vec2 v_TexCoord;\n" +
+                "uniform samplerExternalOES u_Texture;\n" +
+                "void main() {\n" +
+                "    gl_FragColor = texture2D(u_Texture, v_TexCoord);\n" +
+                "}"
 
     // 2D Quad representing the full screen (X, Y)
     private val quadCoords = floatArrayOf(

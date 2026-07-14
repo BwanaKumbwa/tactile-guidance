@@ -75,6 +75,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
     @Volatile private var lastFrameTime = 0L
     @Volatile private var currentFrameThrottle = 100L
     private val cameraRenderer = CameraRenderer()
+    @Volatile private var isTextureSet = false
 
     // Networking
     private val client = OkHttpClient()
@@ -220,6 +221,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
 
     override fun onResume() {
         super.onResume()
+        isTextureSet = false // Reset state
 
         val prewarmSession = ArCoreManager.resume()
         if (prewarmSession != null) {
@@ -246,11 +248,17 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
             }
         }
 
+        // CRITICAL: Split try-catches so if arSession fails, the GLSurfaceView still runs!
         try {
             arSession?.resume()
+        } catch (e: Exception) {
+            Log.e("HANS", "ARCore Session failed to resume: $e")
+        }
+
+        try {
             surfaceView.onResume()
         } catch (e: Exception) {
-            Log.e("HANS", "Camera not available")
+            Log.e("HANS", "GLSurfaceView failed to resume: $e")
         }
     }
 
@@ -279,7 +287,13 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
         val session = arSession ?: return
 
         try {
-            session.setCameraTextureName(cameraRenderer.textureId)
+            // Only set the texture ID once to avoid driver context thrashing on the IMG GPU
+            if (!isTextureSet && cameraRenderer.textureId != -1) {
+                session.setCameraTextureName(cameraRenderer.textureId)
+                isTextureSet = true
+                Log.d("HANS", "ARCore Camera Texture Bound Successfully: ${cameraRenderer.textureId}")
+            }
+
             val frame = session.update()
             cameraRenderer.draw(frame)
 
