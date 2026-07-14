@@ -297,30 +297,97 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
     // MULTIPLEXED DATA SENDER (RGB + DEPTH)
     // =================================================================
     private fun yuvImageToJpegBytes(image: Image, targetWidth: Int): ByteArray {
-        val yBuffer = image.planes[0].buffer
-        val uBuffer = image.planes[1].buffer
-        val vBuffer = image.planes[2].buffer
+        val width = image.width
+        val height = image.height
 
-        val ySize = yBuffer.remaining()
-        val uSize = uBuffer.remaining()
-        val vSize = vBuffer.remaining()
+        // 1. Convert YUV_420_888 Image to a standardized, flat NV21 byte array (respecting strides)
+        val nv21 = yuv420ToNv21(image)
 
-        val nv21 = ByteArray(ySize + uSize + vSize)
-        yBuffer.get(nv21, 0, ySize)
-        vBuffer.get(nv21, ySize, vSize)
-        uBuffer.get(nv21, ySize + vSize, uSize)
-
-        val yuvImage = YuvImage(nv21, ImageFormat.NV21, image.width, image.height, null)
+        // 2. Compress NV21 to JPEG
+        val yuvImage = YuvImage(nv21, ImageFormat.NV21, width, height, null)
         val out = ByteArrayOutputStream()
-        yuvImage.compressToJpeg(Rect(0, 0, image.width, image.height), 80, out)
+        yuvImage.compressToJpeg(Rect(0, 0, width, height), 80, out)
 
-        val bmp = BitmapFactory.decodeByteArray(out.toByteArray(), 0, out.size())
+        val jpegBytes = out.toByteArray()
+
+        // 3. Safely decode to Bitmap
+        val bmp = BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size)
+            ?: throw IOException("ARCore Frame Converter: Failed to decode YUV image to Bitmap")
+
+        // 4. Scale down and compress to final output format
         val targetHeight = (targetWidth.toFloat() / bmp.width * bmp.height).toInt()
         val scaledBmp = Bitmap.createScaledBitmap(bmp, targetWidth, targetHeight, true)
 
         val finalOut = ByteArrayOutputStream()
         scaledBmp.compress(Bitmap.CompressFormat.JPEG, 60, finalOut)
+
+        // 5. CRITICAL: Recycle bitmaps instantly to prevent OOM/Garbage Collection lags on your AR thread
+        bmp.recycle()
+        scaledBmp.recycle()
+
         return finalOut.toByteArray()
+    }
+
+    private fun yuv420ToNv21(image: Image): ByteArray {
+        val width = image.width
+        val height = image.height
+        val ySize = width * height
+        val uvSize = width * height / 2
+        val nv21 = ByteArray(ySize + uvSize)
+
+        val yPlane = image.planes[0]
+        val uPlane = image.planes[1]
+        val vPlane = image.planes[2]
+
+        val yBuffer = yPlane.buffer
+        val uBuffer = uPlane.buffer
+        val vBuffer = vPlane.buffer
+
+        val yRowStride = yPlane.rowStride
+        val yPixelStride = yPlane.pixelStride
+
+        // Copy Y Plane
+        if (yPixelStride == 1 && yRowStride == width) {
+            yBuffer.get(nv21, 0, ySize)
+        } else {
+            val rowData = ByteArray(width)
+            for (row in 0 until height) {
+                yBuffer.position(row * yRowStride)
+                yBuffer.get(rowData, 0, width)
+                System.arraycopy(rowData, 0, nv21, row * width, width)
+            }
+        }
+
+        // Copy Interleaved U/V Planes (NV21 requires V first, then U)
+        val vRowStride = vPlane.rowStride
+        val vPixelStride = vPlane.pixelStride
+        val uRowStride = uPlane.rowStride
+        val uPixelStride = uPlane.pixelStride
+
+        val uvWidth = width / 2
+        val uvHeight = height / 2
+
+        var nv21Idx = ySize
+
+        // Copy buffer content to local arrays for faster index traversal
+        val vBytes = ByteArray(vBuffer.remaining())
+        val uBytes = ByteArray(uBuffer.remaining())
+        vBuffer.get(vBytes)
+        uBuffer.get(uBytes)
+
+        for (row in 0 until uvHeight) {
+            val vRowStart = row * vRowStride
+            val uRowStart = row * uRowStride
+            for (col in 0 until uvWidth) {
+                val vIndex = vRowStart + (col * vPixelStride)
+                val uIndex = uRowStart + (col * uPixelStride)
+
+                // NV21 interleaving pattern: V, U, V, U...
+                nv21[nv21Idx++] = vBytes[vIndex]
+                nv21[nv21Idx++] = uBytes[uIndex]
+            }
+        }
+        return nv21
     }
 
     private fun depth16ToPngBytes(depthImage: Image): ByteArray {
