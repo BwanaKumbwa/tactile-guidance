@@ -27,6 +27,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.google.ar.core.ArCoreApk
+import com.google.ar.core.Coordinates2d
 import com.google.ar.core.Config
 import com.google.ar.core.Frame
 import com.google.ar.core.Session
@@ -39,6 +40,8 @@ import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.nio.FloatBuffer
 import java.util.Locale
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
@@ -185,11 +188,18 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                 Log.d("HANS", "Depth initializing... move phone around to help")
             }
 
-            val rgbBytes = yuvImageToJpegBytes(rgbImage, 640)
+            val targetWidth = 640
+            val targetHeight = (targetWidth.toFloat() / rgbImage.width * rgbImage.height).toInt()
+            val rgbBytes = yuvImageToJpegBytes(rgbImage, targetWidth)
 
             var depthBytes = ByteArray(0)
             if (depthImage != null) {
-                depthBytes = depth16ToPngBytes(depthImage)
+                // Warp depth into the same pixel grid as the scaled RGB image.
+                // Raw ARCore depth has a different resolution/FOV; naive resize on
+                // the server samples the wrong scene point (e.g. background wall).
+                depthBytes = alignedDepthToPngBytes(
+                    frame, rgbImage, depthImage, targetWidth, targetHeight
+                )
 
                 val hasDepthData = depthBytes.size > 100 && !isDepthAllZeros(depthBytes)
                 if (!hasDepthData) {
@@ -404,35 +414,73 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
         return nv21
     }
 
-    private fun depth16ToPngBytes(depthImage: Image): ByteArray {
-        val plane = depthImage.planes[0]
-        val buffer = plane.buffer
-        buffer.order(java.nio.ByteOrder.LITTLE_ENDIAN)
+    /**
+     * Build a depth PNG aligned to the scaled RGB frame using ARCore coordinate transforms.
+     * See: https://developers.google.com/ar/develop/java/depth/developer-guide
+     */
+    private fun alignedDepthToPngBytes(
+        frame: Frame,
+        cameraImage: Image,
+        depthImage: Image,
+        targetWidth: Int,
+        targetHeight: Int
+    ): ByteArray {
+        val depthPlane = depthImage.planes[0]
+        val depthBuffer = depthPlane.buffer.duplicate()
+        depthBuffer.order(ByteOrder.LITTLE_ENDIAN)
 
-        val width  = depthImage.width
-        val height = depthImage.height
-        val rowStride   = plane.rowStride
-        val pixelStride = plane.pixelStride
+        val depthW = depthImage.width
+        val depthH = depthImage.height
+        val rowStride = depthPlane.rowStride
+        val pixelStride = depthPlane.pixelStride
 
-        val pixels = IntArray(width * height)
+        val camW = cameraImage.width.toFloat()
+        val camH = cameraImage.height.toFloat()
+        val nVerts = targetWidth * targetHeight
 
-        for (y in 0 until height) {
-            for (x in 0 until width) {
-                val byteIndex  = (y * rowStride) + (x * pixelStride)
-                val distanceMm = buffer.getShort(byteIndex).toInt() and 0xFFFF
-                val pixelIndex = (y * width) + x
+        val inputBuf = ByteBuffer.allocateDirect(nVerts * 2 * 4)
+            .order(ByteOrder.nativeOrder())
+            .asFloatBuffer()
+        for (ty in 0 until targetHeight) {
+            for (tx in 0 until targetWidth) {
+                inputBuf.put((tx + 0.5f) / targetWidth * camW)
+                inputBuf.put((ty + 0.5f) / targetHeight * camH)
+            }
+        }
+        inputBuf.rewind()
 
-                pixels[pixelIndex] = if (distanceMm == 0) {
-                    android.graphics.Color.rgb(0, 0, 0)
-                } else {
-                    val r = (distanceMm shr 8) and 0xFF
-                    val g = distanceMm and 0xFF
-                    android.graphics.Color.rgb(r, g, 0)
-                }
+        val outputBuf = ByteBuffer.allocateDirect(nVerts * 2 * 4)
+            .order(ByteOrder.nativeOrder())
+            .asFloatBuffer()
+        frame.transformCoordinates2d(
+            Coordinates2d.IMAGE_PIXELS,
+            inputBuf,
+            Coordinates2d.TEXTURE_NORMALIZED,
+            outputBuf
+        )
+        outputBuf.rewind()
+
+        val pixels = IntArray(nVerts)
+        for (i in 0 until nVerts) {
+            val tu = outputBuf.get()
+            val tv = outputBuf.get()
+            val distanceMm = if (tu < 0f || tv < 0f) {
+                0
+            } else {
+                val dx = (tu * depthW).toInt().coerceIn(0, depthW - 1)
+                val dy = (tv * depthH).toInt().coerceIn(0, depthH - 1)
+                val idx = dy * rowStride + dx * pixelStride
+                depthBuffer.getShort(idx).toInt() and 0xFFFF
+            }
+
+            pixels[i] = if (distanceMm == 0) {
+                android.graphics.Color.rgb(0, 0, 0)
+            } else {
+                android.graphics.Color.rgb((distanceMm shr 8) and 0xFF, distanceMm and 0xFF, 0)
             }
         }
 
-        val bitmap = Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888)
+        val bitmap = Bitmap.createBitmap(pixels, targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
         val out = ByteArrayOutputStream()
         bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
         return out.toByteArray()
