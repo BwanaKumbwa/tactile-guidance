@@ -998,6 +998,19 @@ class VisionPipeline:
             self._publish_target('none')
 
     def _save_memory_async(self) -> None:
+        try:
+            with open(self._memory_file_path, "r") as f:
+                latest_memory = json.load(f)
+
+            # keep latest calibration/preferences from server_main
+            if "calibration" in latest_memory:
+                self._memory["calibration"] = latest_memory["calibration"]
+
+            if "preferences" in latest_memory:
+                self._memory["preferences"] = latest_memory["preferences"]
+
+        except Exception as e:
+            print(f"[Pipeline] Memory sync warning: {e}")
         snapshot = json.dumps(self._memory, indent=4)
         path     = self._memory_file_path
         threading.Thread(

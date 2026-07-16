@@ -1,6 +1,7 @@
 package com.example.hans
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -42,6 +43,8 @@ import java.nio.ByteBuffer
 import java.util.Locale
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
+import androidx.constraintlayout.widget.ConstraintLayout
+import com.google.android.material.bottomnavigation.BottomNavigationView
 
 class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurfaceView.Renderer {
 
@@ -63,7 +66,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
     private lateinit var overlayView: OverlayView
     private lateinit var tvStatus: TextView
     private lateinit var tvAiResponse: TextView
-    private lateinit var btnPtt: Button
+    private lateinit var btnPtt: ConstraintLayout
 
     // PTT State
     @Volatile private var isPttRecording = false
@@ -87,6 +90,10 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
     private lateinit var tts: TextToSpeech
     private lateinit var audioManager: AudioManager
 
+    // Preferences
+    private val Intensity_Prefs = "FullIntensityPrefs"
+    private val Pattern_Prefs = "PatternPrefs"
+
     // ✅ Bluetooth Managers - NOW FROM SINGLETON
     private lateinit var braceletManager: BleManager
     private lateinit var beltManager: BleManager
@@ -107,7 +114,32 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
         overlayView = findViewById(R.id.overlayView)
         tvStatus    = findViewById(R.id.tvStatus)
         tvAiResponse = findViewById(R.id.tvAiResponse)
-        btnPtt      = findViewById(R.id.btnPtt)
+        btnPtt      = findViewById(R.id.rootLayout)
+
+        val bottomNav = findViewById<BottomNavigationView>(R.id.bottomNavigation)
+
+        bottomNav.selectedItemId = R.id.menu_camera
+        bottomNav.setOnItemSelectedListener { item ->
+
+            when (item.itemId) {
+
+                R.id.menu_home -> {
+                    startActivity(Intent(this, BluetoothActivity::class.java))
+                    finish()
+                    true
+                }
+
+                R.id.menu_camera -> true
+
+                R.id.menu_setting -> {
+                    startActivity(Intent(this, SettingsActivity::class.java))
+                    finish()
+                    true
+                }
+
+                else -> false
+            }
+        }
 
         // OpenGL surface for ARCore
         surfaceView.preserveEGLContextOnPause = true
@@ -484,7 +516,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
 
         runOnUiThread {
             tvStatus.text = "🔴 Recording... release to send"
-            btnPtt.text = "Release to Send"
             btnPtt.setBackgroundColor(PTT_COLOR_ACTIVE)
         }
 
@@ -551,7 +582,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
     private fun stopPttRecording() {
         runOnUiThread {
             tvStatus.text = "Status: Processing..."
-            btnPtt.text   = "Processing..."
             btnPtt.isEnabled = false
         }
         try {
@@ -566,7 +596,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
     private fun resetPttButton() {
         runOnUiThread {
             isPttRecording   = false
-            btnPtt.text      = "Hold to Speak"
             btnPtt.isEnabled = true
             btnPtt.setBackgroundColor(PTT_COLOR_IDLE)
         }
@@ -667,6 +696,8 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
             put("text", text)
             put("bracelet_connected", braceletManager.isConnected())
             put("belt_connected",     beltManager.isConnected())
+            put("vibration", loadIntensity())
+            put("pattern", loadPattern())
         }
 
         val body    = json.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
@@ -762,6 +793,27 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                 finish()
             }
         }
+
+    private fun loadIntensity(): JSONObject{
+        val prefs = getSharedPreferences(Intensity_Prefs, MODE_PRIVATE)
+
+        val vibration = JSONObject()
+        vibration.put("left", prefs.getInt("leftIntensity", 0))
+        vibration.put("down", prefs.getInt("bottomIntensity", 0))
+        vibration.put("right", prefs.getInt("rightIntensity", 0))
+        vibration.put("top", prefs.getInt("topIntensity", 0))
+        vibration.put("top_front", prefs.getInt("topFrontIntensity", 0))
+        vibration.put("top_back", prefs.getInt("topBackIntensity", 0))
+        vibration.put("belt", prefs.getInt("beltIntensity", 0))
+
+        return vibration
+    }
+
+    private fun loadPattern(): String{
+        val prefs = getSharedPreferences(Pattern_Prefs, MODE_PRIVATE)
+
+        return prefs.getString("PATTERN_CODE","VIB_PATTERN_SINGLE") ?: "VIB_PATTERN_SINGLE"
+    }
 
     override fun onDestroy() {
         super.onDestroy()

@@ -590,6 +590,46 @@ class CommandRequest(BaseModel):
     belt_connected: bool = False
     vibration : VibrationRequest
     pattern: str = "VIB_PATTERN_SINGLE"
+MEMORY_FILE = Path("results") / "memory_participant_1.json"
+
+
+def update_memory_calibration_preferences(new_intensity, pattern):
+    try:
+        # Load memory lama
+        if MEMORY_FILE.exists():
+            with open(MEMORY_FILE, "r") as f:
+                memory = json.load(f)
+        else:
+            memory = {}
+
+        # Update calibration
+        memory["calibration"] = {
+            "left": new_intensity.get("left", 30),
+            "down": new_intensity.get("down", 30),
+            "right": new_intensity.get("right", 30),
+            "top": new_intensity.get("top", 30),
+            "top_front": new_intensity.get("top_front", 30),
+            "top_back": new_intensity.get("top_back", 30),
+            "belt": new_intensity.get("belt", 30)
+        }
+
+
+        # Pastikan preferences ada
+        if "preferences" not in memory:
+            memory["preferences"] = {}
+
+        # Tambahkan pattern
+        memory["preferences"]["vibration_pattern"] = pattern
+
+        with open(MEMORY_FILE, "w") as f:
+            json.dump(memory, f, indent=4)
+
+        print("Memory calibration updated")
+        print(memory["calibration"])
+        print(memory["preferences"])
+
+    except Exception as e:
+        print(f"Failed updating memory calibration: {e}")
 
 @app.post("/api/command")
 async def process_command(req: CommandRequest):
@@ -609,8 +649,7 @@ async def process_command(req: CommandRequest):
         "belt": req.vibration.belt,
     }
 
-    print("Received intensity:", new_intensity)
-    print("Pattern:", req.pattern)
+    update_memory_calibration_preferences(new_intensity, req.pattern)
 
     # Send information to memory logger
     mcp_queue.put({"instruction": "log_command", "value": req.text})

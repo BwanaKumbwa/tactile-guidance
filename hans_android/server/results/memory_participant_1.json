@@ -1,44 +1,48 @@
 {
     "target_list": [
-        "bottle"
+        "cup"
     ],
     "list_mode": "unordered",
     "grasped_objects": [
         "cup"
     ],
     "calibration": {
-        "bottom": 30,
-        "top": 30,
-        "left": 30,
-        "right": 30
+        "left": 50,
+        "down": 50,
+        "right": 50,
+        "top": 50,
+        "top_front": 60,
+        "top_back": 40,
+        "belt": 50
     },
     "preferences": {
         "speech_speed": "normal",
         "verbosity": "low",
         "battery_saver": false,
-        "play_welcome_message": true
+        "play_welcome_message": true,
+        "vibration_pattern": "VIB_PATTERN_MULTI"
     },
     "command_history": [],
     "world_map": {
         "myright": {
-            "location": "Bottom Right, unknown depth",
-            "last_seen": "11:39:55 AM"
+            "location": "Middle Center, 0.58m",
+            "last_seen": "01:51:41 PM"
         },
         "myleft": {
-            "location": "Top Center, unknown depth",
-            "last_seen": "02:38:50 PM"
+            "location": "Bottom Right, unknown depth",
+            "last_seen": "01:50:45 PM"
         },
         "potted plant": {
-            "location": "Middle Center, 2.54m",
-            "last_seen": "12:50:40 AM"
+            "location": "Bottom Right, 1.00m",
+            "last_seen": "12:07:52 PM"
         },
         "clock": {
             "location": "Middle Left, unknown depth",
             "last_seen": "02:15:38 PM"
         },
         "cup": {
-            "location": "Bottom Center, unknown depth",
-            "last_seen": "02:17:25 PM"
+            "location": "Middle Center, 0.61m",
+            "last_seen": "01:51:41 PM"
         },
         "bottle": {
             "location": "Middle Center, unknown depth",
@@ -50,7 +54,7 @@
         },
         "bowl": {
             "location": "Middle Right, unknown depth",
-            "last_seen": "09:56:51 AM"
+            "last_seen": "01:31:33 PM"
         },
         "fork": {
             "location": "Top Center, 0.86m",
