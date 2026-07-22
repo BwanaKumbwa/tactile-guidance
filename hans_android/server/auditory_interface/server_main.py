@@ -576,13 +576,13 @@ async def video_endpoint(websocket: WebSocket):
         sender_future.cancel()
 
 class VibrationRequest(BaseModel):
-    left: int
-    down: int
-    right: int
-    top: int
-    top_front : int
-    top_back : int
-    belt: int
+    left: int = 50
+    down: int = 50
+    right: int = 50
+    top: int = 50
+    top_front: int = 50
+    top_back: int = 50
+    belt: int = 50
 
 class CommandRequest(BaseModel):
     text: str
@@ -590,8 +590,8 @@ class CommandRequest(BaseModel):
     belt_connected: bool = False
     vibration : VibrationRequest
     pattern: str = "VIB_PATTERN_SINGLE"
-MEMORY_FILE = Path("results") / "memory_participant_1.json"
 
+MEMORY_FILE = Path("results") / "memory_participant_1.json"
 
 def update_memory_calibration_preferences(new_intensity, pattern):
     try:
@@ -604,13 +604,13 @@ def update_memory_calibration_preferences(new_intensity, pattern):
 
         # Update calibration
         memory["calibration"] = {
-            "left": new_intensity.get("left", 30),
-            "down": new_intensity.get("down", 30),
-            "right": new_intensity.get("right", 30),
-            "top": new_intensity.get("top", 30),
-            "top_front": new_intensity.get("top_front", 30),
-            "top_back": new_intensity.get("top_back", 30),
-            "belt": new_intensity.get("belt", 30)
+            "left": new_intensity.get("left", 50),
+            "down": new_intensity.get("down", 50),
+            "right": new_intensity.get("right", 50),
+            "top": new_intensity.get("top", 50),
+            "top_front": new_intensity.get("top_front", 50),
+            "top_back": new_intensity.get("top_back", 50),
+            "belt": new_intensity.get("belt", 50)
         }
 
 
@@ -640,13 +640,13 @@ async def process_command(req: CommandRequest):
 
     # Receive intensity and pattern preferences from Android
     new_intensity = {
-        "left": req.vibration.left,
-        "down": req.vibration.down,
-        "right": req.vibration.right,
-        "top": req.vibration.top,
-        "top_front": req.vibration.top_front,
-        "top_back": req.vibration.top_back,
-        "belt": req.vibration.belt,
+        "left": req.vibration.left or 50,
+        "down": req.vibration.down or 50,
+        "right": req.vibration.right or 50,
+        "top": req.vibration.top or 50,
+        "top_front": req.vibration.top_front or 50,
+        "top_back": req.vibration.top_back or 50,
+        "belt": req.vibration.belt or 50,
     }
 
     update_memory_calibration_preferences(new_intensity, req.pattern)

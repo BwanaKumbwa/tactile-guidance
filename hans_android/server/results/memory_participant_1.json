@@ -1,6 +1,6 @@
 {
     "target_list": [
-        "cup"
+        "banana"
     ],
     "list_mode": "unordered",
     "grasped_objects": [
@@ -11,8 +11,8 @@
         "down": 50,
         "right": 50,
         "top": 50,
-        "top_front": 60,
-        "top_back": 40,
+        "top_front": 50,
+        "top_back": 50,
         "belt": 50
     },
     "preferences": {
@@ -20,17 +20,17 @@
         "verbosity": "low",
         "battery_saver": false,
         "play_welcome_message": true,
-        "vibration_pattern": "VIB_PATTERN_MULTI"
+        "vibration_pattern": "VIB_PATTERN_SINGLE"
     },
     "command_history": [],
     "world_map": {
         "myright": {
-            "location": "Middle Center, 0.58m",
-            "last_seen": "01:51:41 PM"
+            "location": "Middle Right, unknown depth",
+            "last_seen": "01:17:01 PM"
         },
         "myleft": {
             "location": "Bottom Right, unknown depth",
-            "last_seen": "01:50:45 PM"
+            "last_seen": "01:13:50 PM"
         },
         "potted plant": {
             "location": "Bottom Right, 1.00m",
@@ -41,16 +41,16 @@
             "last_seen": "02:15:38 PM"
         },
         "cup": {
-            "location": "Middle Center, 0.61m",
-            "last_seen": "01:51:41 PM"
+            "location": "Middle Left, unknown depth",
+            "last_seen": "11:09:45 AM"
         },
         "bottle": {
             "location": "Middle Center, unknown depth",
-            "last_seen": "11:39:55 AM"
+            "last_seen": "09:54:58 AM"
         },
         "apple": {
-            "location": "Middle Center, 0.53m",
-            "last_seen": "01:12:25 PM"
+            "location": "Bottom Left, unknown depth",
+            "last_seen": "09:50:09 AM"
         },
         "bowl": {
             "location": "Middle Right, unknown depth",
@@ -65,8 +65,8 @@
             "last_seen": "01:11:39 PM"
         },
         "banana": {
-            "location": "Middle Left, unknown depth",
-            "last_seen": "12:40:26 PM"
+            "location": "Middle Center, unknown depth",
+            "last_seen": "01:16:53 PM"
         }
     }
 }
