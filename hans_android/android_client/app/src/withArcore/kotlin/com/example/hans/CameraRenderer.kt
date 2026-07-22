@@ -31,15 +31,16 @@ class CameraRenderer {
     """.trimIndent()
 
     // Fragment shader: Converts hardware OES (YUV) to RGB pixels
-    private val fragmentShaderCode = """
-        #extension GL_OES_EGL_image_external : require
-        precision mediump float;
-        varying vec2 v_TexCoord;
-        uniform samplerExternalOES u_Texture;
-        void main() {
-            gl_FragColor = texture2D(u_Texture, v_TexCoord);
-        }
-    """.trimIndent()
+
+    // Hand-concatenated to guarantee #extension is the absolute first character for strict IMG compilers
+    private val fragmentShaderCode =
+        "#extension GL_OES_EGL_image_external : require\n" +
+                "precision mediump float;\n" +
+                "varying vec2 v_TexCoord;\n" +
+                "uniform samplerExternalOES u_Texture;\n" +
+                "void main() {\n" +
+                "    gl_FragColor = texture2D(u_Texture, v_TexCoord);\n" +
+                "}"
 
     // 2D Quad representing the full screen (X, Y)
     private val quadCoords = floatArrayOf(
@@ -57,9 +58,20 @@ class CameraRenderer {
             position(0)
         }
 
+    private val defaultTexCoords = floatArrayOf(
+        0.0f, 1.0f,
+        0.0f, 0.0f,
+        1.0f, 1.0f,
+        1.0f, 0.0f
+    )
+
     private val texBuffer: FloatBuffer = ByteBuffer.allocateDirect(8 * 4)
         .order(ByteOrder.nativeOrder())
         .asFloatBuffer()
+        .apply {
+            put(defaultTexCoords)
+            position(0)
+        }
 
     fun createOnGlThread() {
         // 1. Generate an OES Texture ID

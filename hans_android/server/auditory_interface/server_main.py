@@ -575,61 +575,62 @@ async def video_endpoint(websocket: WebSocket):
     finally:
         sender_future.cancel()
 
-class VibrationRequest(BaseModel):
-    left: int = 50
-    down: int = 50
-    right: int = 50
-    top: int = 50
-    top_front: int = 50
-    top_back: int = 50
-    belt: int = 50
+# class VibrationRequest(BaseModel):
+#     left: int 
+#     down: int
+#     right: int
+#     top: int 
+#     top_front: int
+#     top_back: int
+#     belt: int
 
 class CommandRequest(BaseModel):
     text: str
     bracelet_connected: bool = False
     belt_connected: bool = False
-    vibration : VibrationRequest
     pattern: str = "VIB_PATTERN_SINGLE"
+#    vibration : VibrationRequest
+#    pattern: str = "VIB_PATTERN_SINGLE"
 
-MEMORY_FILE = Path("results") / "memory_participant_1.json"
+# MEMORY_FILE = Path("results") / "memory_participant_1.json"
 
-def update_memory_calibration_preferences(new_intensity, pattern):
-    try:
-        # Load memory lama
-        if MEMORY_FILE.exists():
-            with open(MEMORY_FILE, "r") as f:
-                memory = json.load(f)
-        else:
-            memory = {}
+# def update_memory_calibration_preferences(new_intensity, pattern):
+#     try:
+#         # Load memory lama
+#         if MEMORY_FILE.exists():
+#             with open(MEMORY_FILE, "r") as f:
+#                 memory = json.load(f)
+#         else:
+#             memory = {}
 
-        # Update calibration
-        memory["calibration"] = {
-            "left": new_intensity.get("left", 50),
-            "down": new_intensity.get("down", 50),
-            "right": new_intensity.get("right", 50),
-            "top": new_intensity.get("top", 50),
-            "top_front": new_intensity.get("top_front", 50),
-            "top_back": new_intensity.get("top_back", 50),
-            "belt": new_intensity.get("belt", 50)
-        }
+#         # Update calibration
+#         memory["calibration"] = {
+#             "left": new_intensity.get("left", 50),
+#             "down": new_intensity.get("down", 50),
+#             "right": new_intensity.get("right", 50),
+#             "top": new_intensity.get("top", 50),
+#             "top_front": new_intensity.get("top_front", 50),
+#             "top_back": new_intensity.get("top_back", 50),
+#             "belt": new_intensity.get("belt", 50)
+#         }
 
 
-        # Pastikan preferences ada
-        if "preferences" not in memory:
-            memory["preferences"] = {}
+#         # Pastikan preferences ada
+#         if "preferences" not in memory:
+#             memory["preferences"] = {}
 
-        # Tambahkan pattern
-        memory["preferences"]["vibration_pattern"] = pattern
+#         # Tambahkan pattern
+#         memory["preferences"]["vibration_pattern"] = pattern
 
-        with open(MEMORY_FILE, "w") as f:
-            json.dump(memory, f, indent=4)
+#         with open(MEMORY_FILE, "w") as f:
+#             json.dump(memory, f, indent=4)
 
-        print("Memory calibration updated")
-        print(memory["calibration"])
-        print(memory["preferences"])
+#         print("Memory calibration updated")
+#         print(memory["calibration"])
+#         print(memory["preferences"])
 
-    except Exception as e:
-        print(f"Failed updating memory calibration: {e}")
+#     except Exception as e:
+#         print(f"Failed updating memory calibration: {e}")
 
 @app.post("/api/command")
 async def process_command(req: CommandRequest):
@@ -638,7 +639,7 @@ async def process_command(req: CommandRequest):
     # Save hardware status to shared state so tools can read it
     shared_state.set_hardware_status(req.bracelet_connected, req.belt_connected)
 
-    # Receive intensity and pattern preferences from Android
+    #Receive intensity and pattern preferences from Android
     new_intensity = {
         "left": req.vibration.left or 50,
         "down": req.vibration.down or 50,
