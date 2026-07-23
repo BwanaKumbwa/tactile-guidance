@@ -544,7 +544,7 @@ class VisionPipeline:
             # Haptic engine
             curr_target = None
             if self._class_target_obj != -1 and not self._navigation_paused:
-                curr_target = self._run_haptic_engine(outputs)
+                curr_target = self._run_haptic_engine(outputs, im0.shape)
 
             # WebSocket
             self._push_result_queue(outputs, im0.shape)
@@ -652,12 +652,12 @@ class VisionPipeline:
 
     # Haptic engine
 
-    def _run_haptic_engine(self, outputs: list) -> Optional[np.ndarray]:
+    def _run_haptic_engine(self, outputs: list, frame_shape=None) -> Optional[np.ndarray]:
         """
         Simplified haptic engine: adapters coordinate distance-based vibration.
         
-        BeltAdapter: vibrates when target > 70cm
-        BraceletAdapter:   navigates when target ≤ 70cm
+        BeltAdapter: vibrates when target > handoff enter (50cm)
+        BraceletAdapter:   navigates when target ≤ handoff enter (50cm)
         """
         
         if self._grasped:
@@ -693,6 +693,7 @@ class VisionPipeline:
             depth_img=depth_for_haptics,
             vibration_intensities=self._vib_intensities,
             metric=self._cfg.metric_depth,
+            frame_shape=frame_shape if frame_shape is not None else (640, 640),
         )
 
         # Let all adapters decide independently based on distance
