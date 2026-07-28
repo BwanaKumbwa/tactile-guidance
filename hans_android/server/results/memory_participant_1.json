@@ -4,30 +4,31 @@
     ],
     "list_mode": "unordered",
     "grasped_objects": [
-        "cup"
+        "cup",
+        "banana"
     ],
     "calibration": {
-        "left": 50,
-        "bottom": 50,
-        "right": 50,
-        "top": 50
+        "left": 70,
+        "bottom": 65,
+        "right": 35,
+        "top": 40
     },
     "preferences": {
         "speech_speed": "normal",
         "verbosity": "low",
         "battery_saver": false,
         "play_welcome_message": true,
-        "pattern": "VIB_PATTERN_SINGLE"
+        "vibration_pattern": "VIB_PATTERN_SINGLE"
     },
     "command_history": [],
     "world_map": {
         "myright": {
-            "location": "Bottom Right, unknown depth",
-            "last_seen": "02:39:06 PM"
+            "location": "Middle Right, 0.46m",
+            "last_seen": "08:53:28 AM"
         },
         "myleft": {
-            "location": "Bottom Right, unknown depth",
-            "last_seen": "02:20:47 PM"
+            "location": "Middle Right, 0.53m",
+            "last_seen": "03:19:46 PM"
         },
         "potted plant": {
             "location": "Bottom Right, 1.00m",
@@ -62,8 +63,8 @@
             "last_seen": "01:11:39 PM"
         },
         "banana": {
-            "location": "Middle Center, unknown depth",
-            "last_seen": "02:39:06 PM"
+            "location": "Middle Center, 0.42m",
+            "last_seen": "08:53:28 AM"
         }
     }
 }

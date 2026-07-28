@@ -575,11 +575,11 @@ async def video_endpoint(websocket: WebSocket):
     finally:
         sender_future.cancel()
 
-# class VibrationRequest(BaseModel):
-#     left: int 
-#     down: int
-#     right: int
-#     top: int 
+class VibrationRequest(BaseModel):
+    left: int 
+    bottom: int
+    right: int
+    top: int 
 #     top_front: int
 #     top_back: int
 #     belt: int
@@ -588,49 +588,47 @@ class CommandRequest(BaseModel):
     text: str
     bracelet_connected: bool = False
     belt_connected: bool = False
+    vibration : VibrationRequest
     pattern: str = "VIB_PATTERN_SINGLE"
-#    vibration : VibrationRequest
-#    pattern: str = "VIB_PATTERN_SINGLE"
 
-# MEMORY_FILE = Path("results") / "memory_participant_1.json"
+MEMORY_FILE = Path("results") / "memory_participant_1.json"
 
-# def update_memory_calibration_preferences(new_intensity, pattern):
-#     try:
-#         # Load memory lama
-#         if MEMORY_FILE.exists():
-#             with open(MEMORY_FILE, "r") as f:
-#                 memory = json.load(f)
-#         else:
-#             memory = {}
+def update_memory_calibration_preferences(new_intensity, pattern):
+    try:
+        # Load previous memory
+        if MEMORY_FILE.exists():
+            with open(MEMORY_FILE, "r") as f:
+                memory = json.load(f)
+        else:
+            memory = {}
 
-#         # Update calibration
-#         memory["calibration"] = {
-#             "left": new_intensity.get("left", 50),
-#             "down": new_intensity.get("down", 50),
-#             "right": new_intensity.get("right", 50),
-#             "top": new_intensity.get("top", 50),
-#             "top_front": new_intensity.get("top_front", 50),
-#             "top_back": new_intensity.get("top_back", 50),
-#             "belt": new_intensity.get("belt", 50)
-#         }
+        # Update calibration
+        memory["calibration"] = {
+            "left": new_intensity.get("left", 50),
+            "bottom": new_intensity.get("bottom", 50),
+            "right": new_intensity.get("right", 50),
+            "top": new_intensity.get("top", 50),
+            # "top_front": new_intensity.get("top_front", 50),
+            # "top_back": new_intensity.get("top_back", 50),
+            # "belt": new_intensity.get("belt", 50)
+        }
 
+        # Make sure there is preferences in the .json file
+        if "preferences" not in memory:
+            memory["preferences"] = {}
 
-#         # Pastikan preferences ada
-#         if "preferences" not in memory:
-#             memory["preferences"] = {}
+        # Add pattern
+        memory["preferences"]["vibration_pattern"] = pattern
 
-#         # Tambahkan pattern
-#         memory["preferences"]["vibration_pattern"] = pattern
+        with open(MEMORY_FILE, "w") as f:
+            json.dump(memory, f, indent=4)
 
-#         with open(MEMORY_FILE, "w") as f:
-#             json.dump(memory, f, indent=4)
+        print("Memory calibration updated")
+        print(memory["calibration"])
+        print(memory["preferences"])
 
-#         print("Memory calibration updated")
-#         print(memory["calibration"])
-#         print(memory["preferences"])
-
-#     except Exception as e:
-#         print(f"Failed updating memory calibration: {e}")
+    except Exception as e:
+        print(f"Failed updating memory calibration: {e}")
 
 @app.post("/api/command")
 async def process_command(req: CommandRequest):
@@ -642,12 +640,12 @@ async def process_command(req: CommandRequest):
     #Receive intensity and pattern preferences from Android
     new_intensity = {
         "left": req.vibration.left or 50,
-        "down": req.vibration.down or 50,
+        "bottom": req.vibration.bottom or 50,
         "right": req.vibration.right or 50,
         "top": req.vibration.top or 50,
-        "top_front": req.vibration.top_front or 50,
-        "top_back": req.vibration.top_back or 50,
-        "belt": req.vibration.belt or 50,
+        # "top_front": req.vibration.top_front or 50,
+        # "top_back": req.vibration.top_back or 50,
+        # "belt": req.vibration.belt or 50,
     }
 
     update_memory_calibration_preferences(new_intensity, req.pattern)
