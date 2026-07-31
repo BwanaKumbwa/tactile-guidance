@@ -1041,7 +1041,75 @@ class VisionPipeline:
         result = annotator.result()
         #cv2.putText(result, f'FPS:{int(fps)}', (20, 70),
         #            cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 1)
+        self._draw_belt_avoidance_overlay(result)
         return result
+
+    def _draw_belt_avoidance_overlay(self, im: np.ndarray) -> None:
+        """Draw corridor / obstacle / waypoint from BeltAdapter debug state."""
+        belt = next(
+            (d for d in self._feedback_devices
+             if d.get_status().get('type') == 'belt_distance'),
+            None,
+        )
+        if belt is None or not hasattr(belt, 'get_debug_viz'):
+            return
+        viz = belt.get_debug_viz()
+        if not viz:
+            return
+
+        h, w = im.shape[:2]
+        corridor = viz.get('corridor')
+        if corridor is not None:
+            x0, y0, x1, y1 = [int(v) for v in corridor]
+            cv2.rectangle(im, (x0, y0), (x1, y1), (255, 200, 0), 2)
+
+        phase = viz.get('phase', '')
+        color_wp = (0, 255, 255) if phase == 'avoid_A' else (0, 255, 0)
+
+        target_xy = viz.get('target_xy')
+        if target_xy is not None:
+            tx, ty = int(target_xy[0]), int(target_xy[1])
+            cv2.circle(im, (tx, ty), 8, (0, 255, 0), 2)
+            cv2.putText(im, 'T', (tx + 10, ty - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+
+        obs_cx = viz.get('obs_cx')
+        if obs_cx is not None and corridor is not None:
+            ox = int(obs_cx)
+            oy = int((corridor[1] + corridor[3]) / 2)
+            cv2.circle(im, (ox, oy), 10, (0, 0, 255), 2)
+            cv2.putText(im, 'OBS', (ox + 12, oy),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 255), 2)
+
+        steer_x = viz.get('steer_x')
+        if steer_x is not None:
+            sx = int(steer_x)
+            sy = int(h * 0.45)
+            cv2.drawMarker(im, (sx, sy), color_wp, cv2.MARKER_TILTED_CROSS, 24, 2)
+            cv2.putText(im, 'WP', (sx + 12, sy - 8),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, color_wp, 2)
+            if target_xy is not None:
+                cv2.line(im, (int(target_xy[0]), int(target_xy[1])),
+                         (sx, sy), color_wp, 1, cv2.LINE_AA)
+
+        side = viz.get('avoid_side') or '-'
+        obs_d = viz.get('obs_depth_m')
+        tgt_d = viz.get('target_depth_m')
+        angle = viz.get('angle_deg')
+        lines = [
+            f"phase: {phase}",
+            f"side: {side}",
+            f"angle: {angle:.0f} deg" if angle is not None else "angle: -",
+            f"obs: {obs_d:.2f}m" if obs_d is not None else "obs: -",
+            f"tgt: {tgt_d:.2f}m" if tgt_d is not None else "tgt: -",
+        ]
+        y = 28
+        for line in lines:
+            cv2.putText(im, line, (12, y), cv2.FONT_HERSHEY_SIMPLEX,
+                        0.55, (255, 255, 255), 2, cv2.LINE_AA)
+            cv2.putText(im, line, (12, y), cv2.FONT_HERSHEY_SIMPLEX,
+                        0.55, (40, 40, 40), 1, cv2.LINE_AA)
+            y += 22
 
     def depth_side_by_side(self, im0: np.ndarray, depth_img: np.ndarray) -> np.ndarray:
         valid = depth_img[depth_img > 0]
