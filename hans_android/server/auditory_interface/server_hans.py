@@ -146,43 +146,75 @@ def find_similar_target(target_name: str) -> str:
 @mcp.tool()
 def set_target_with_fuzzy_match(target_name: str) -> str:
     """
-    Set a target, automatically correcting for speech-to-text errors.
-    Finds the best match from visible objects.
+    Set a target, correcting for speech-to-text when possible.
+    If the requested target is not currently visible, accept it as the active
+    target and instruct the user to move the camera; notify when detected.
     """
     try:
-        # First, try fuzzy matching
+        # First, try fuzzy matching among visible objects
         match_result = find_similar_target(target_name)
         match_data = json.loads(match_result)
-        
-        # Extract the best matched target
-        if match_data["status"] in ["exact_match", "similar_match"]:
+
+        # If we found a visible match, set it and respond as before
+        if match_data.get("status") in ["exact_match", "similar_match"]:
             matched_target = match_data["matched_target"]
             confidence = match_data.get("confidence", 1.0)
-            
-            # Set the matched target
+
             requests.post(
                 f"{FASTAPI_URL}/command",
-                json={
-                    "instruction": "set_target_list",
-                    "value": json.dumps({"targets": [matched_target], "mode": "unordered"})
-                }
+                json={"instruction": "set_target_list",
+                      "value": json.dumps({"targets": [matched_target], "mode": "unordered"})}
             )
-            
-            # Prepare response
+
             if match_data["status"] == "exact_match":
                 return f"Target set to {matched_target}."
             else:
-                # Inform user of the correction
                 return f"Did you mean '{matched_target}'? (You said '{target_name}'). Setting target. Confidence: {confidence:.0%}"
-        
+
+        # No visible match — try to resolve against available classes (accept non-visible targets)
+        state = requests.get(f"{FASTAPI_URL}/state").json()
+        available_classes = state.get("available_classes", [])
+        visible_names = [o['name'] for o in state.get("visible_objects", [])]
+
+        if not available_classes:
+            return "Error: system not initialized or no available classes loaded."
+
+        # Exact match in available classes
+        target_lower = target_name.lower().strip()
+        exact = next((c for c in available_classes if c.lower() == target_lower), None)
+        chosen = exact
+
+        # Fuzzy match against available classes if exact not found
+        if chosen is None:
+            best = None
+            best_score = 0.0
+            for cls_name in available_classes:
+                score = SequenceMatcher(None, target_lower, cls_name.lower()).ratio()
+                if score > best_score and score > 0.70:
+                    best = cls_name
+                    best_score = score
+            if best:
+                chosen = best
+
+        if chosen is None:
+            # No match in known classes
+            return f"I couldn't resolve '{target_name}' to a valid object class. Available classes: {', '.join(sorted(available_classes)[:20])}"
+
+        # Set the chosen target (even if not currently visible)
+        requests.post(
+            f"{FASTAPI_URL}/command",
+            json={"instruction": "set_target_list",
+                  "value": json.dumps({"targets": [chosen], "mode": "unordered"})}
+        )
+
+        # If chosen is visible, confirm; otherwise return the prescribed exploration prompt
+        if chosen in visible_names:
+            return f"Target set to {chosen}."
         else:
-            # No good match found
-            available = match_data.get("available_objects", [])
-            if available:
-                return f"I couldn't find '{target_name}'. Available objects: {', '.join(available)}. Which one?"
-            else:
-                return match_data.get("message", "No objects currently visible.")
-    
+            # Preferred phrasing for non-visible target
+            return (f"{chosen} set as target. It is not currently in the field of view. "
+                    "Move the camera around to look for it. I will notify you when it is detected.")
+
     except Exception as e:
         return f"Error setting target: {str(e)}"
 
@@ -232,7 +264,7 @@ def add_targets_to_list(target_names: list[str], mode: str = "unordered") -> str
                 if exact_match in visible_names:
                     validation_status.append(f"✓ {exact_match} (valid class, currently visible)")
                 else:
-                    validation_status.append(f"✓ {exact_match} (valid class, will search)")
+                    validation_status.append(f"✓ {exact_match} (valid class, not currently visible)")
             else:
                 # 2. Fuzzy match against available classes
                 best_match = None
@@ -250,7 +282,7 @@ def add_targets_to_list(target_names: list[str], mode: str = "unordered") -> str
                     if best_match in visible_names:
                         validation_status.append(f"~ {best_match} (matched '{target_name}', visible, {best_score:.0%} confidence)")
                     else:
-                        validation_status.append(f"~ {best_match} (matched '{target_name}', will search, {best_score:.0%} confidence)")
+                        validation_status.append(f"~ {best_match} (matched '{target_name}', not currently visible, {best_score:.0%} confidence)")
                 else:
                     # No match found - REJECT this target
                     rejected_targets.append(target_name)

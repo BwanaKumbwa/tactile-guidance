@@ -244,6 +244,8 @@ class VisionPipeline:
         self._names_hand:  dict  = {}
         self._pt_hand:     bool  = False
         self._cmd_table:   dict  = {}
+        # One-shot visibility notifier cache
+        self._prev_visible_names: set = set()
 
     # Public API
 
@@ -919,8 +921,10 @@ class VisionPipeline:
         img_h, img_w = img_shape[:2]
         now_str = datetime.now().strftime('%I:%M:%S %p')
         visible, new_map = [], {}
+        visible_cls = set()
         for item in outputs:
             cls  = int(item[5])
+            visible_cls.add(cls)
             name = self._master_label.get(cls)
             if name is None:
                 continue
@@ -939,11 +943,45 @@ class VisionPipeline:
                                      float(item[2]), float(item[3])]})
             if conf > 0.60:
                 new_map[name] = {'location': loc, 'last_seen': now_str}
+
+        # Publish visible objects to shared state
         self._shared_state.set_visible_objects(visible)
         if new_map:
             self._shared_state.update_world_map(new_map)
             self._memory.setdefault('world_map', {}).update(new_map)
 
+        # One-shot detection notification: if the active target just became visible,
+        # notify once via the result queue so the Android client can TTS it.
+        try:
+            if self._class_target_obj != -1:
+                tgt_name = self._master_label.get(self._class_target_obj)
+                if tgt_name:
+                    # Check if target is in current visible names and was not previously
+                    visible_names = [v['name'] for v in visible]
+                    just_detected = (tgt_name in visible_names) and (tgt_name not in self._prev_visible_names)
+                    if just_detected and self._result_queue is not None:
+                        try:
+                            self._result_queue.put_nowait({"tts_command": f"{tgt_name} detected."})
+                        except Exception:
+                            pass
+
+                        # If hand not visible, prompt user to bring hand into view
+                        hand_ids = [h + self._index_add for h in self._cfg.classes_hand]
+                        hand_visible = any(hid in visible_cls for hid in hand_ids)
+                        if not hand_visible:
+                            try:
+                                self._result_queue.put_nowait({"tts_command": "Please bring your hand into view to begin guidance."})
+                            except Exception:
+                                pass
+
+        except Exception:
+            pass
+
+        # Update prev visible names cache
+        try:
+            self._prev_visible_names = set([v['name'] for v in visible])
+        except Exception:
+            self._prev_visible_names = set()
     def _publish_available_classes(self) -> None:
         if self._shared_state:
             self._shared_state.set_available_classes(list(coco_labels.values()))

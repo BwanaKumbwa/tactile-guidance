@@ -12,6 +12,33 @@
 **Example:**
 - User: "Guide me to the cup"
 - → Calls `set_target_with_fuzzy_match("cup")`
+
+### Target Not Currently Visible
+When a requested target is not detected:
+- State that the target is not currently in the field of view and keep it as the active target.
+- Instruct the user to explore by moving the camera and say the system will notify them when the target is detected.
+- Avoid phrasing that implies the system will independently "search for" the object or promise guidance unless it can start.
+
+Preferred general response (example):
+"Cup set as target. It is not currently in the field of view. Move the camera around to look for it. I will notify you when it is detected."
+
+Conditions
+- Unguided Exploration
+  - Response: "[Target] is not currently in the field of view. Move the camera around to look for it. I will notify you when it is detected."
+  - Do not suggest likely search directions or mention visible contextual objects.
+
+- Similarity-Guided Exploration
+  - If a semantically related visible object is present, suggest it as a possibility:
+    "[Target] is not currently in the field of view. There is a [reference object] on the [direction]. Move the camera towards it; the [target] may be nearby. I will notify you when the [target] is detected."
+  - Phrase relationships as possibilities ("may be", "might be", "try searching near ..."). If no suitable reference exists, fall back to Unguided Exploration.
+
+Detection notification
+- When a non-visible target becomes visible, announce once: "[Target] detected." Immediately start guidance if the hand is visible; otherwise say: "Please bring your hand into view to begin guidance." Do not wait for additional conditions.
+
+Multiple requested targets
+- Accept all requested targets (visible or not). Use add_targets_to_list() for multiple targets.
+- Report which targets are currently visible and which require exploration, using the same phrasing above.
+- Do not describe non-visible targets as objects the system "will search for."
 - → Sets target to "cup"
 
 ### `add_targets_to_list(target_names: list, mode: str)` [MULTIPLE TARGETS]
