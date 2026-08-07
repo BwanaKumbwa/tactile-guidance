@@ -123,6 +123,15 @@ class SharedState:
         self._list_mode = "ordered"
         self._memory_existed = False
         self._world_map = {}
+        self._belt_adapter = None
+
+    def set_belt_adapter(self, belt):
+        with self._lock:
+            self._belt_adapter = belt
+
+    def get_belt_adapter(self):
+        with self._lock:
+            return self._belt_adapter
 
     def set_target(self, target: str):
         with self._lock: self._current_target = target
@@ -206,6 +215,7 @@ def run_ai_logic():
     
     belt.connect()
     bracelet.connect()
+    shared_state.set_belt_adapter(belt)
     
     feedback_devices = [belt, bracelet]
     
@@ -459,6 +469,74 @@ def get_memory():
         "target_list": [],
         "list_mode": "ordered"
     }
+
+class BeltMotorRequest(BaseModel):
+    motor: str = "front"   # front | right | back | left  (uses navel calibration)
+    intensity: int = 60
+
+
+class BeltMotorIndexRequest(BaseModel):
+    index: int = 0         # 0 .. 15
+    intensity: int = 60
+
+
+class BeltNavelRequest(BaseModel):
+    index: int             # motor index under the green marker
+
+
+@app.post("/belt/test_motor_index")
+def belt_test_motor_index(req: BeltMotorIndexRequest):
+    """Vibrate one physical motor by MOTOR_INDEX (0..15). Use to find the green marker."""
+    belt = shared_state.get_belt_adapter()
+    if belt is None:
+        return {"ok": False, "error": "Belt adapter not ready yet — wait for AI thread / phone"}
+    return belt.test_motor_index(req.index, intensity=req.intensity)
+
+
+@app.post("/belt/set_navel")
+def belt_set_navel(req: BeltNavelRequest):
+    """Declare which motor index sits on the green navel marker."""
+    belt = shared_state.get_belt_adapter()
+    if belt is None:
+        return {"ok": False, "error": "Belt adapter not ready yet"}
+    return belt.set_navel_motor(req.index)
+
+
+@app.post("/belt/test_motor")
+def belt_test_motor(req: BeltMotorRequest):
+    """Vibrate a body direction (front/right/back/left) using the navel calibration."""
+    belt = shared_state.get_belt_adapter()
+    if belt is None:
+        return {"ok": False, "error": "Belt adapter not ready yet"}
+    return belt.test_direction(req.motor, intensity=req.intensity)
+
+
+@app.post("/belt/test_cardinals")
+def belt_test_cardinals(intensity: int = 60):
+    """front → right → back → left (after navel is set)."""
+    belt = shared_state.get_belt_adapter()
+    if belt is None:
+        return {"ok": False, "error": "Belt adapter not ready yet"}
+    return belt.test_cardinals(intensity=intensity)
+
+
+@app.post("/belt/test_all_motors")
+def belt_test_all_motors(intensity: int = 60):
+    """Vibrate all 16 motors by INDEX. Note which index is under the green marker."""
+    belt = shared_state.get_belt_adapter()
+    if belt is None:
+        return {"ok": False, "error": "Belt adapter not ready yet"}
+    return belt.test_all_motors(intensity=intensity)
+
+
+@app.post("/belt/flip_direction")
+def belt_flip_direction():
+    """If left/right feel swapped after setting navel, flip motor walk direction."""
+    belt = shared_state.get_belt_adapter()
+    if belt is None:
+        return {"ok": False, "error": "Belt adapter not ready yet"}
+    return belt.flip_motor_direction()
+
 
 # Android endpoints
 @app.websocket("/ws/video")

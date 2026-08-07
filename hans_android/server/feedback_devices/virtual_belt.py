@@ -1,5 +1,8 @@
 import base64
 
+from feedback_devices.orientation import ANGLE, MAGNETIC_BEARING, MOTOR_INDEX
+
+
 class VirtualBeltController:
     def __init__(self, result_queue, target_device="all"):
         self.result_queue = result_queue
@@ -10,18 +13,13 @@ class VirtualBeltController:
             return self.stop_vibration()
 
         intensity = max(0, min(int(intensity), 100))
-        orientation_int = int(orientation)
-        
-        # Only apply 360 modulo if we are actually sending a compass angle (type 0)
-        if orientation_type == 0:
-            orientation_int = orientation_int % 360
-        
-        # Send a guaranteed 2-second (2000ms) block of vibration.
-        # We will refresh this from the adapters before it expires.
-        on_duration_ms = 2000 
-        
+        orientation_int = self._normalize_orientation(orientation_type, orientation)
+
+        # Guaranteed ~2 s block; adapters refresh before expiry.
+        on_duration_ms = 2000
+
         command_bytes = bytes([
-            0x40,                            # Command Flag: Vibrate
+            0x40,                            # Command Flag: Vibrate (pulse-style)
             channel_index & 0xFF,
             orientation_type & 0xFF,
             orientation_int & 0xFF,
@@ -45,12 +43,8 @@ class VirtualBeltController:
 
     def send_pulse_command(self, channel_index, intensity, orientation_type, orientation, on_duration_ms, pulse_period, pulse_iterations, series_period, **kwargs):
         intensity = max(0, min(int(intensity), 100))
-        orientation_int = int(orientation)
-        
-        # Only apply 360 modulo if we are actually sending a compass angle (type 0)
-        if orientation_type == 0:
-            orientation_int = orientation_int % 360
-            
+        orientation_int = self._normalize_orientation(orientation_type, orientation)
+
         command_bytes = bytes([
             0x40, channel_index & 0xFF, orientation_type & 0xFF,
             orientation_int & 0xFF, (orientation_int >> 8) & 0xFF,
@@ -64,6 +58,17 @@ class VirtualBeltController:
     def stop_vibration(self, **kwargs):
         self._send_raw(bytes([0x30, 0xFF]))
         return True
+
+    @staticmethod
+    def _normalize_orientation(orientation_type, orientation) -> int:
+        """Match pybelt range rules for each orientation type."""
+        orientation_int = int(orientation)
+        if orientation_type in (ANGLE, MAGNETIC_BEARING):
+            return orientation_int % 360
+        if orientation_type == MOTOR_INDEX:
+            return orientation_int % 16
+        # BINARY_MASK: leave bit pattern unchanged
+        return orientation_int
 
     def _send_raw(self, byte_array):
         if self.result_queue is not None and not self.result_queue.full():
