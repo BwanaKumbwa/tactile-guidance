@@ -128,7 +128,8 @@ class BraceletAdapter(FeedbackDevice):
         p = patterns.get(event)
         if p and self._virtual_belt:
             self._virtual_belt.send_pulse_command(
-                channel_index=1, intensity=p['intensity'], orientation_type=1,
+                channel_index=1, intensity=p['intensity'],
+                orientation_type=0,  # BINARY_MASK
                 orientation=p['orientation'], on_duration_ms=p['duration_ms'],
                 pulse_period=300, pulse_iterations=p['iters'],
                 series_period=5000, series_iterations=1,
@@ -156,5 +157,6 @@ class BraceletAdapter(FeedbackDevice):
         if self._virtual_belt:
             self._virtual_belt.send_vibration_command(
                 channel_index=1, pattern=0, intensity=50,
-                orientation_type=0, orientation=int(angle_deg),
+                orientation_type=2,  # ANGLE
+                orientation=int(angle_deg),
             )

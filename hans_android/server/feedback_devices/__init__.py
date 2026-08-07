@@ -4,7 +4,7 @@ from .base import FeedbackDevice, NavigationContext
 from .mock import MockFeedbackDevice
 from .virtual_belt import VirtualBeltController
 from .adapters import BraceletAdapter, SpatialAudioAdapter, BeltAdapter
-from .handoff import HANDOFF_ENTER_CM, HANDOFF_EXIT_CM, MAX_APPROACH_CM
+from .handoff import HANDOFF_ENTER_CM, HANDOFF_EXIT_CM, MAX_APPROACH_CM, PRE_HANDOFF_CM
 
 __all__ = [
     'FeedbackDevice',
@@ -16,5 +16,6 @@ __all__ = [
     'BeltAdapter',
     'HANDOFF_ENTER_CM',
     'HANDOFF_EXIT_CM',
+    'PRE_HANDOFF_CM',
     'MAX_APPROACH_CM',
 ]

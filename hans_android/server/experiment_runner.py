@@ -24,6 +24,15 @@ class _Key:
     START_TRIAL        = ord('s')
     SAVE_AND_QUIT      = ord('c')
 
+    # Belt motor calibration (MOTOR_INDEX 0..15 probe + navel mark)
+    MOTOR_ALL          = ord('0')   # sweep all 16 motor indices
+    MOTOR_PREV         = ord('[')
+    MOTOR_NEXT         = ord(']')
+    MOTOR_REPEAT       = ord('r')   # re-buzz current probe index
+    MOTOR_MARK_NAVEL   = ord('m')   # green marker = this motor
+    MOTOR_VERIFY       = ord('v')   # front → right → back → left
+    MOTOR_FLIP_DIR     = ord('f')   # flip left/right along the belt
+
     RESULT_KEYS = {
         ord('y'): 'SUCCESSFUL',
         ord('n'): 'FAILED',
@@ -88,6 +97,8 @@ class ExperimentRunner:
         else:
             print(f'[Experiment] Auto mode. Targets: {self._target_objs}')
         print('[Experiment] Keys: S=start  Y=success  N=fail  F=sys_fail  T=wrong  C=quit')
+        print('[Experiment] Belt calib: 0=sweep all motors  ]=next  [=prev  R=repeat')
+        print('[Experiment]             M=mark green-marker as navel  V=verify  F=flip L/R')
 
         try:
             self._main_loop()
@@ -137,6 +148,21 @@ class ExperimentRunner:
         elif key == _Key.START_TRIAL and self._ready_for_next:
             self._start_trial()
 
+        elif key == _Key.MOTOR_ALL:
+            self._run_belt_calib(lambda b: b.test_all_motors())
+        elif key == _Key.MOTOR_NEXT:
+            self._run_belt_calib(lambda b: b.probe_next())
+        elif key == _Key.MOTOR_PREV:
+            self._run_belt_calib(lambda b: b.probe_prev())
+        elif key == _Key.MOTOR_REPEAT:
+            self._run_belt_calib(lambda b: b.probe_current())
+        elif key == _Key.MOTOR_MARK_NAVEL:
+            self._run_belt_calib(lambda b: b.set_navel_motor())
+        elif key == _Key.MOTOR_VERIFY:
+            self._run_belt_calib(lambda b: b.test_cardinals())
+        elif key == _Key.MOTOR_FLIP_DIR:
+            self._run_belt_calib(lambda b: b.flip_motor_direction())
+
         # Save data and quit
         elif key == _Key.SAVE_AND_QUIT:
             if self._trial_running:
@@ -146,6 +172,20 @@ class ExperimentRunner:
             return 'quit'
 
         return None
+
+    def _belt_adapter(self):
+        for dev in getattr(self._pipeline, '_feedback_devices', []):
+            if dev.get_status().get('type') == 'belt_distance':
+                return dev
+        return None
+
+    def _run_belt_calib(self, fn) -> None:
+        belt = self._belt_adapter()
+        if belt is None:
+            print('[Experiment] No belt adapter available.')
+            return
+        # Blocking on purpose — wear the belt and watch the terminal labels
+        fn(belt)
 
     # Trial state machine
 
