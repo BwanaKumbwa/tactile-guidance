@@ -186,6 +186,7 @@ class TestBeltNavCues:
     def test_direction_change_one_all_around_pulse(self, tmp_path, monkeypatch):
         belt = _uncalibrated_belt(tmp_path, monkeypatch)
         fake = belt._virtual_belt
+        belt.BEARING_SMOOTH_ALPHA = 1.0  # no smoothing — sector must flip cleanly
         belt.update(_ctx([_det(320, 240, 2.5)]))  # center → nav_start
         belt._cue_hold_until = 0.0
         belt._last_dir_change_time = 0.0
@@ -358,7 +359,13 @@ class TestBeltAvoidance:
         belt._last_dir_change_time = 0.0
 
         assert belt.get_status()['avoidance_active'] is False
-        assert belt.get_status()['avoid_side'] is None
+        # Side may be retained once a plan is locked (static strategy)
+        status = belt.get_status()
+        if status.get('plan_locked') and status.get('plan_has_obstacle'):
+            assert status.get('plan_obstacle_done') is True
+            assert status.get('avoid_side') == 'right'
+        else:
+            assert status.get('avoid_side') is None
 
     def test_keeps_waypoint_while_clearing(self):
         fake = _FakeBelt()
@@ -424,3 +431,65 @@ class TestBeltAvoidance:
         belt._last_dir_change_time = 0.0
         assert belt.get_status()['in_approach'] is False
         assert belt.get_status()['avoidance_active'] is False
+
+
+class TestBeltPlanFreeze:
+    def test_locks_obstacle_plan_and_ignores_side_flip(self, tmp_path, monkeypatch):
+        from server.feedback_devices.adapters import belt_adapter as ba
+        monkeypatch.setattr(ba, '_NAVEL_CALIB_PATH', tmp_path / 'no_navel.json')
+
+        fake = _FakeBelt()
+        belt = BeltAdapter(fake)
+        belt._navel_motor_index = None
+        belt.PLAN_LOCK_FRAMES = 3
+        depth = _mid_obstacle(_depth_map(fill_m=2.5))
+
+        for _ in range(3):
+            belt.update(_ctx([_det(120, 240, 2.5)], depth_img=depth))
+            belt._cue_hold_until = 0.0
+        assert belt.get_status()['plan_locked'] is True
+        assert belt.get_status()['plan_has_obstacle'] is True
+        assert belt.get_status()['avoid_side'] == 'left'
+
+        # Target jumps to the right — locked plan must keep left
+        for _ in range(5):
+            belt.update(_ctx([_det(520, 240, 2.5)], depth_img=depth))
+            belt._cue_hold_until = 0.0
+        assert belt.get_status()['avoid_side'] == 'left'
+        assert belt.get_status()['plan_locked'] is True
+
+    def test_locks_direct_approach_when_corridor_clear(self, tmp_path, monkeypatch):
+        from server.feedback_devices.adapters import belt_adapter as ba
+        monkeypatch.setattr(ba, '_NAVEL_CALIB_PATH', tmp_path / 'no_navel.json')
+
+        fake = _FakeBelt()
+        belt = BeltAdapter(fake)
+        belt._navel_motor_index = None
+        belt.PLAN_LOCK_FRAMES = 3
+        clear = _depth_map(fill_m=2.5)
+
+        for _ in range(3):
+            belt.update(_ctx([_det(320, 240, 2.5)], depth_img=clear))
+            belt._cue_hold_until = 0.0
+        assert belt.get_status()['plan_locked'] is True
+        assert belt.get_status()['plan_has_obstacle'] is False
+        assert belt.get_status()['avoidance_active'] is False
+
+    def test_idle_unlocks_plan(self, tmp_path, monkeypatch):
+        from server.feedback_devices.adapters import belt_adapter as ba
+        monkeypatch.setattr(ba, '_NAVEL_CALIB_PATH', tmp_path / 'no_navel.json')
+
+        fake = _FakeBelt()
+        belt = BeltAdapter(fake)
+        belt._navel_motor_index = None
+        belt.PLAN_LOCK_FRAMES = 2
+        depth = _mid_obstacle(_depth_map(fill_m=2.5))
+        for _ in range(2):
+            belt.update(_ctx([_det(120, 240, 2.5)], depth_img=depth))
+            belt._cue_hold_until = 0.0
+        assert belt.get_status()['plan_locked'] is True
+
+        for _ in range(BeltAdapter.TARGET_MISS_TOLERANCE + 1):
+            belt.update(_ctx([]))  # sustained target loss → idle / unlock
+        assert belt.get_status()['plan_locked'] is False
+        assert belt.get_status()['avoid_side'] is None

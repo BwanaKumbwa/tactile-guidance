@@ -12,6 +12,11 @@ If a single standing obstacle appears in the forward depth corridor (target
 still visible behind it), navigation splits into two steps:
   Phase A — steer toward a side waypoint that clears the obstacle
   Phase B — once the corridor is clear (user has crossed), steer to target
+
+For the static-scene thesis setup (bottle and obstacle do not move), a
+navigation *plan* is locked after a short stability window: pass side and
+obstacle geometry freeze, while waist steering still uses a smoothed live
+bearing so the user can walk the plan without frame-to-frame re-planning.
 """
 from __future__ import annotations
 
@@ -72,6 +77,11 @@ class BeltAdapter(FeedbackDevice):
     DIR_CHANGE_HOLD_S = 0.45
     DIR_CHANGE_MIN_INTERVAL_S = 1.2
 
+    # Freeze plan after this many consistent frames (static bottle + obstacle)
+    PLAN_LOCK_FRAMES = 10
+    # EMA on steering angle (0 = raw, 1 = frozen); circular blend
+    BEARING_SMOOTH_ALPHA = 0.35
+
     # Forward-corridor obstacle detection (approach phase only).
     # Tuned for standing blockers; floor/table band is excluded.
     CORRIDOR_HALF_WIDTH_FRAC = 0.10
@@ -120,7 +130,7 @@ class BeltAdapter(FeedbackDevice):
         self._motor_dir = 1
         self._load_navel_calibration()
 
-        # Avoidance state (single static obstacle)
+        # Avoidance + frozen plan (static bottle / obstacle thesis setup)
         self._avoidance_active = False
         self._avoid_side: Optional[str] = None  # 'left' | 'right'
         self._clear_frames = 0
@@ -131,6 +141,14 @@ class BeltAdapter(FeedbackDevice):
         # Latest geometry for OpenCV / console debug overlay
         self._debug_viz: dict = {}
         self._last_logged_phase: Optional[str] = None
+
+        # Plan lock: strategy freezes; steering bearing stays live+smoothed
+        self._plan_locked = False
+        self._plan_has_obstacle = False
+        self._plan_obstacle_done = False
+        self._plan_obs_stable = 0
+        self._plan_clear_stable = 0
+        self._smoothed_angle: Optional[float] = None
 
     def connect(self) -> bool:
         self._connected = True
@@ -463,6 +481,9 @@ class BeltAdapter(FeedbackDevice):
             'probe_index': self._probe_index,
             'motor_dir': self._motor_dir,
             'last_cue': self._last_cue,
+            'plan_locked': self._plan_locked,
+            'plan_has_obstacle': self._plan_has_obstacle,
+            'plan_obstacle_done': self._plan_obstacle_done,
         }
 
     def get_debug_viz(self) -> dict:
@@ -476,6 +497,7 @@ class BeltAdapter(FeedbackDevice):
     def _enter_handoff(self) -> None:
         self._in_approach = False
         self._reset_avoidance('handoff')
+        self._reset_plan()
         if self._currently_vibrating:
             self.stop()
         self._signaled_pre_handoff = True
@@ -491,18 +513,32 @@ class BeltAdapter(FeedbackDevice):
         self._target_miss_frames = 0
         self._last_target = None
         self._reset_avoidance('target lost')
+        self._reset_plan()
         self._reset_nav_cues()
 
     def _reset_avoidance(self, reason: str = 'obstacle cleared') -> None:
         was_active = self._avoidance_active
         self._avoidance_active = False
-        self._avoid_side = None
+        # Keep _avoid_side if the plan is locked (strategy must not flip)
+        if not self._plan_locked:
+            self._avoid_side = None
+            self._obstacle_depth_m = None
+            self._last_obs_cx = None
         self._clear_frames = 0
-        self._obstacle_depth_m = None
-        self._last_obs_cx = None
         if was_active and self._last_logged_phase != 'approach':
             self._last_logged_phase = 'approach'
             print(f'[BeltAvoid] phase=approach ({reason})')
+
+    def _reset_plan(self) -> None:
+        self._plan_locked = False
+        self._plan_has_obstacle = False
+        self._plan_obstacle_done = False
+        self._plan_obs_stable = 0
+        self._plan_clear_stable = 0
+        self._smoothed_angle = None
+        self._avoid_side = None
+        self._obstacle_depth_m = None
+        self._last_obs_cx = None
 
     def _steer_hold_avoidance(self, ctx: NavigationContext, target) -> object:
         """Keep Phase-A steering when the target bbox is briefly missing."""
@@ -518,7 +554,7 @@ class BeltAdapter(FeedbackDevice):
         else:
             steer_x = float(target[0])
             obs_cx = obs_depth = None
-        angle_deg = self._bearing_deg(steer_x, frame_w)
+        angle_deg = self._smooth_bearing(self._bearing_deg(steer_x, frame_w))
         intensity = self._intensity_for_depth(depth_cm, ctx)
         self._maybe_emit_nav_cues(depth_cm, angle_deg)
         self._update_debug_viz(
@@ -550,48 +586,89 @@ class BeltAdapter(FeedbackDevice):
         x0, x1, y0, y1 = self._corridor_bounds(frame_h, frame_w)
         corridor = (x0, y0, x1, y1)
 
+        # Live corridor check (used to lock plan and to know when user has passed)
         min_frac = (
-            self.OBSTACLE_FRACTION_EXIT if self._avoidance_active
+            self.OBSTACLE_FRACTION_EXIT
+            if (self._avoidance_active or self._plan_has_obstacle)
             else self.OBSTACLE_FRACTION_ENTER
         )
         obs = None
         if depth_m > 0:
             obs = self._detect_obstacle(ctx, target, depth_m, min_frac)
 
-        if obs is not None:
-            self._clear_frames = 0
-            obs_cx, obs_depth, closer_mask, origin = obs
-            self._last_obs_cx = obs_cx
-            self._obstacle_depth_m = obs_depth
-            if not self._avoidance_active:
-                self._avoidance_active = True
-                self._avoid_side = self._choose_avoid_side(
-                    float(target[0]), obs_cx, closer_mask, origin)
-
-            steer_x = self._waypoint_x(
-                obs_cx, obs_depth, frame_w, self._avoid_side or 'right')
-            phase = 'avoid_A'
-        elif self._avoidance_active:
-            self._clear_frames += 1
-            if self._clear_frames >= self.CLEAR_FRAMES_TO_EXIT:
-                self._reset_avoidance('obstacle cleared')
+        if not self._plan_locked:
+            self._accumulate_plan_lock(target, obs)
+            # Pre-lock: behave like before (live), but do not flip side once chosen
+            if obs is not None:
+                obs_cx, obs_depth, closer_mask, origin = obs
+                self._last_obs_cx = obs_cx
+                self._obstacle_depth_m = obs_depth
+                self._clear_frames = 0
+                if not self._avoidance_active:
+                    self._avoidance_active = True
+                    if self._avoid_side is None:
+                        self._avoid_side = self._choose_avoid_side(
+                            float(target[0]), obs_cx, closer_mask, origin)
+                steer_x = self._waypoint_x(
+                    obs_cx, obs_depth, frame_w, self._avoid_side or 'right')
+                phase = 'avoid_A'
+            elif self._avoidance_active:
+                self._clear_frames += 1
+                if self._clear_frames >= self.CLEAR_FRAMES_TO_EXIT:
+                    self._reset_avoidance('obstacle cleared')
+                    steer_x = float(target[0])
+                    phase = 'approach'
+                else:
+                    phase = 'avoid_B_clearing'
+                    if self._last_obs_cx is not None and self._obstacle_depth_m:
+                        steer_x = self._waypoint_x(
+                            self._last_obs_cx, self._obstacle_depth_m, frame_w,
+                            self._avoid_side or 'right')
+                        obs_cx = self._last_obs_cx
+                        obs_depth = self._obstacle_depth_m
+                    else:
+                        steer_x = float(target[0])
+            else:
                 steer_x = float(target[0])
                 phase = 'approach'
-            else:
-                phase = 'avoid_B_clearing'
-                if self._last_obs_cx is not None and self._obstacle_depth_m:
-                    steer_x = self._waypoint_x(
-                        self._last_obs_cx, self._obstacle_depth_m, frame_w,
-                        self._avoid_side or 'right')
+        else:
+            # Locked plan: never re-choose side; use frozen obstacle geometry
+            if self._plan_has_obstacle and not self._plan_obstacle_done:
+                if obs is not None:
+                    self._clear_frames = 0
+                    # Keep live centroid only for debug; steering uses freeze
+                    obs_cx, obs_depth = obs[0], obs[1]
+                else:
+                    self._clear_frames += 1
                     obs_cx = self._last_obs_cx
                     obs_depth = self._obstacle_depth_m
-                else:
-                    steer_x = float(target[0])
-        else:
-            steer_x = float(target[0])
-            phase = 'approach'
 
-        angle_deg = self._bearing_deg(steer_x, frame_w)
+                if self._clear_frames >= self.CLEAR_FRAMES_TO_EXIT:
+                    self._plan_obstacle_done = True
+                    self._avoidance_active = False
+                    self._clear_frames = 0
+                    steer_x = float(target[0])
+                    phase = 'approach'
+                    print('[BeltPlan] obstacle cleared — resume target approach '
+                          f'(side was {self._avoid_side})')
+                else:
+                    self._avoidance_active = True
+                    if self._last_obs_cx is not None and self._obstacle_depth_m:
+                        steer_x = self._waypoint_x(
+                            self._last_obs_cx, self._obstacle_depth_m, frame_w,
+                            self._avoid_side or 'right')
+                        obs_cx = self._last_obs_cx
+                        obs_depth = self._obstacle_depth_m
+                    else:
+                        steer_x = float(target[0])
+                    phase = 'avoid_A' if obs is not None else 'avoid_B_clearing'
+            else:
+                # Direct approach (no obstacle in plan, or already cleared)
+                self._avoidance_active = False
+                steer_x = float(target[0])
+                phase = 'approach'
+
+        angle_deg = self._smooth_bearing(self._bearing_deg(steer_x, frame_w))
         intensity = self._intensity_for_depth(depth_cm, ctx)
         self._maybe_emit_nav_cues(depth_cm, angle_deg)
         self._update_debug_viz(
@@ -612,6 +689,67 @@ class BeltAdapter(FeedbackDevice):
             self._last_angle = angle_deg
             self._last_intensity = intensity
         return target
+
+    def _accumulate_plan_lock(self, target, obs) -> None:
+        """
+        Lock strategy after PLAN_LOCK_FRAMES of either consistent obstacle or
+        clear corridor. Static thesis scenes: bottle and obstacle do not move.
+
+        Once avoidance has started (side chosen), never lock as "direct" —
+        finish locking the obstacle plan even while the corridor is clearing.
+        """
+        if obs is not None:
+            self._plan_obs_stable += 1
+            self._plan_clear_stable = 0
+            obs_cx, obs_depth, closer_mask, origin = obs
+            if self._avoid_side is None:
+                self._avoid_side = self._choose_avoid_side(
+                    float(target[0]), obs_cx, closer_mask, origin)
+            # Refresh freeze candidates until lock
+            self._last_obs_cx = obs_cx
+            self._obstacle_depth_m = obs_depth
+            if self._plan_obs_stable >= self.PLAN_LOCK_FRAMES:
+                self._lock_plan(has_obstacle=True)
+        elif self._avoid_side is not None:
+            # Obstacle plan in progress (clearing / holding) — keep locking it
+            self._plan_obs_stable += 1
+            self._plan_clear_stable = 0
+            if self._plan_obs_stable >= self.PLAN_LOCK_FRAMES:
+                self._lock_plan(has_obstacle=True)
+        else:
+            self._plan_clear_stable += 1
+            self._plan_obs_stable = 0
+            if self._plan_clear_stable >= self.PLAN_LOCK_FRAMES:
+                self._lock_plan(has_obstacle=False)
+
+    def _lock_plan(self, has_obstacle: bool) -> None:
+        self._plan_locked = True
+        self._plan_has_obstacle = has_obstacle
+        self._plan_obstacle_done = not has_obstacle
+        if has_obstacle:
+            self._avoidance_active = True
+            print(
+                f'[BeltPlan] LOCKED avoid side={self._avoid_side} '
+                f'obs_cx={self._last_obs_cx:.0f} '
+                f'obs_depth={self._obstacle_depth_m:.2f}m '
+                f'(static scene — will not replan)'
+            )
+        else:
+            self._avoidance_active = False
+            print('[BeltPlan] LOCKED direct approach (corridor clear)')
+
+    def _smooth_bearing(self, angle_deg: float) -> float:
+        """Exponential circular smoothing to reduce motor thrash from jitter."""
+        a = angle_deg % 360.0
+        if self._smoothed_angle is None:
+            self._smoothed_angle = a
+            return a
+        prev = self._smoothed_angle
+        # Shortest-path delta in (-180, 180]
+        delta = (a - prev + 180.0) % 360.0 - 180.0
+        blended = (prev + self.BEARING_SMOOTH_ALPHA * delta) % 360.0
+        self._smoothed_angle = blended
+        return blended
 
     def _update_debug_viz(
         self,
@@ -642,13 +780,17 @@ class BeltAdapter(FeedbackDevice):
             'obs_depth_m': obs_depth,
             'corridor': corridor,  # (x0, y0, x1, y1)
             'clear_frames': self._clear_frames,
+            'plan_locked': self._plan_locked,
+            'plan_has_obstacle': self._plan_has_obstacle,
+            'plan_obstacle_done': self._plan_obstacle_done,
         }
         if phase != self._last_logged_phase:
             self._last_logged_phase = phase
             side = self._avoid_side or '-'
             obs_d = f'{obs_depth:.2f}m' if obs_depth is not None else '-'
+            locked = 'locked' if self._plan_locked else 'locking'
             print(
-                f'[BeltAvoid] phase={phase} side={side} '
+                f'[BeltAvoid] phase={phase} side={side} plan={locked} '
                 f'obs_depth={obs_d} steer_x={steer_x:.0f} '
                 f'angle={angle_deg:.0f}° target_depth={target_depth_m:.2f}m'
             )
