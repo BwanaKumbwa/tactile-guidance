@@ -1,5 +1,5 @@
 """
-Belt adapter — approach / walk-to-target guidance with simple avoidance.
+Belt adapter — approach / walk-to-target guidance with optional avoidance.
 
 Role in the dual-device pipeline
 --------------------------------
@@ -8,15 +8,17 @@ the user toward the object (bearing around the waist + intensity from range).
 Once the user is close enough, the belt stops so the bracelet can take over
 for hand→object grasping.
 
-If a single standing obstacle appears in the forward depth corridor (target
-still visible behind it), navigation splits into two steps:
-  Phase A — steer toward a side waypoint that clears the obstacle
-  Phase B — once the corridor is clear (user has crossed), steer to target
+This single adapter covers both experiment conditions:
+  - Clear path (no chair): steer to the bottle (smoothed bearing).
+  - One static chair in the forward corridor (does not move during a trial):
+    lock a pass-side plan, clear it, then resume target approach.
 
-For the static-scene thesis setup (bottle and obstacle do not move), a
-navigation *plan* is locked after a short stability window: pass side and
-obstacle geometry freeze, while waist steering still uses a smoothed live
-bearing so the user can walk the plan without frame-to-frame re-planning.
+No other obstacle types are expected. Detection is depth-based in a mid-height
+corridor (chair seat/back), not YOLO class labels. Obstacle steering only
+starts after several *consecutive* obstacle frames so depth noise on an empty
+corridor does not yank the user sideways. After a short stability window the
+plan locks (direct or avoid) and does not replan — correct because the chair
+and bottle stay fixed for the trial.
 """
 from __future__ import annotations
 
@@ -77,13 +79,15 @@ class BeltAdapter(FeedbackDevice):
     DIR_CHANGE_HOLD_S = 0.45
     DIR_CHANGE_MIN_INTERVAL_S = 1.2
 
-    # Freeze plan after this many consistent frames (static bottle + obstacle)
+    # Freeze plan after this many consistent frames (static bottle + chair)
     PLAN_LOCK_FRAMES = 10
+    # Consecutive chair frames required before leaving clear-path steering
+    OBSTACLE_CONFIRM_FRAMES = 5
     # EMA on steering angle (0 = raw, 1 = frozen); circular blend
     BEARING_SMOOTH_ALPHA = 0.35
 
-    # Forward-corridor obstacle detection (approach phase only).
-    # Tuned for standing blockers; floor/table band is excluded.
+    # Forward-corridor depth detection (approach phase only).
+    # Tuned for a single static chair; floor band is excluded.
     CORRIDOR_HALF_WIDTH_FRAC = 0.10
     CORRIDOR_HALF_WIDTH_FRAC_HOLD = 0.18  # wider while already avoiding
     CORRIDOR_Y0_FRAC = 0.22
@@ -130,7 +134,7 @@ class BeltAdapter(FeedbackDevice):
         self._motor_dir = 1
         self._load_navel_calibration()
 
-        # Avoidance + frozen plan (static bottle / obstacle thesis setup)
+        # Avoidance + frozen plan (static bottle + one fixed chair)
         self._avoidance_active = False
         self._avoid_side: Optional[str] = None  # 'left' | 'right'
         self._clear_frames = 0
@@ -484,6 +488,7 @@ class BeltAdapter(FeedbackDevice):
             'plan_locked': self._plan_locked,
             'plan_has_obstacle': self._plan_has_obstacle,
             'plan_obstacle_done': self._plan_obstacle_done,
+            'navigation_mode': self._navigation_mode(),
         }
 
     def get_debug_viz(self) -> dict:
@@ -576,6 +581,17 @@ class BeltAdapter(FeedbackDevice):
             self._last_intensity = intensity
         return target
 
+    def _navigation_mode(self) -> str:
+        """Human-readable mode for logging / thesis conditions."""
+        if not self._plan_locked:
+            return 'locking'
+        if self._plan_has_obstacle and not self._plan_obstacle_done:
+            return 'avoid'
+        return 'direct'
+
+    def _obstacle_confirm_needed(self) -> int:
+        return min(self.OBSTACLE_CONFIRM_FRAMES, self.PLAN_LOCK_FRAMES)
+
     def _steer_approach_or_avoid(
         self, ctx: NavigationContext, target, depth_m: float, depth_cm: float,
     ) -> object:
@@ -598,8 +614,9 @@ class BeltAdapter(FeedbackDevice):
 
         if not self._plan_locked:
             self._accumulate_plan_lock(target, obs)
-            # Pre-lock: behave like before (live), but do not flip side once chosen
-            if obs is not None:
+            confirmed = self._plan_obs_stable >= self._obstacle_confirm_needed()
+
+            if obs is not None and confirmed:
                 obs_cx, obs_depth, closer_mask, origin = obs
                 self._last_obs_cx = obs_cx
                 self._obstacle_depth_m = obs_depth
@@ -612,7 +629,8 @@ class BeltAdapter(FeedbackDevice):
                 steer_x = self._waypoint_x(
                     obs_cx, obs_depth, frame_w, self._avoid_side or 'right')
                 phase = 'avoid_A'
-            elif self._avoidance_active:
+            elif self._avoidance_active and confirmed:
+                # Confirmed avoidance in progress; corridor may be clearing
                 self._clear_frames += 1
                 if self._clear_frames >= self.CLEAR_FRAMES_TO_EXIT:
                     self._reset_avoidance('obstacle cleared')
@@ -629,14 +647,19 @@ class BeltAdapter(FeedbackDevice):
                     else:
                         steer_x = float(target[0])
             else:
+                # Clear path, or obstacle not yet confirmed → normal bottle approach
+                if obs is not None:
+                    obs_cx, obs_depth = obs[0], obs[1]
+                    phase = 'approach_confirming_obs'
+                else:
+                    phase = 'approach'
                 steer_x = float(target[0])
-                phase = 'approach'
+                self._avoidance_active = False
         else:
             # Locked plan: never re-choose side; use frozen obstacle geometry
             if self._plan_has_obstacle and not self._plan_obstacle_done:
                 if obs is not None:
                     self._clear_frames = 0
-                    # Keep live centroid only for debug; steering uses freeze
                     obs_cx, obs_depth = obs[0], obs[1]
                 else:
                     self._clear_frames += 1
@@ -663,10 +686,13 @@ class BeltAdapter(FeedbackDevice):
                         steer_x = float(target[0])
                     phase = 'avoid_A' if obs is not None else 'avoid_B_clearing'
             else:
-                # Direct approach (no obstacle in plan, or already cleared)
+                # Locked direct approach (no obstacle) — ignore late false positives
                 self._avoidance_active = False
                 steer_x = float(target[0])
                 phase = 'approach'
+                if obs is not None:
+                    # Debug only: noise after direct lock must not change steering
+                    obs_cx, obs_depth = obs[0], obs[1]
 
         angle_deg = self._smooth_bearing(self._bearing_deg(steer_x, frame_w))
         intensity = self._intensity_for_depth(depth_cm, ctx)
@@ -692,33 +718,39 @@ class BeltAdapter(FeedbackDevice):
 
     def _accumulate_plan_lock(self, target, obs) -> None:
         """
-        Lock strategy after PLAN_LOCK_FRAMES of either consistent obstacle or
-        clear corridor. Static thesis scenes: bottle and obstacle do not move.
+        Lock strategy after PLAN_LOCK_FRAMES of either a consistent chair or a
+        clear corridor. Thesis scenes: bottle and chair do not move mid-trial,
+        so the pass side and chair geometry freeze once locked.
 
-        Once avoidance has started (side chosen), never lock as "direct" —
-        finish locking the obstacle plan even while the corridor is clearing.
+        Avoidance is only armed after OBSTACLE_CONFIRM_FRAMES so a one-frame
+        depth glitch cannot steal a clear-path trial.
         """
+        confirm = self._obstacle_confirm_needed()
+
         if obs is not None:
             self._plan_obs_stable += 1
             self._plan_clear_stable = 0
             obs_cx, obs_depth, closer_mask, origin = obs
-            if self._avoid_side is None:
-                self._avoid_side = self._choose_avoid_side(
-                    float(target[0]), obs_cx, closer_mask, origin)
-            # Refresh freeze candidates until lock
+            # Keep tentative geometry; only choose side once confirmed
             self._last_obs_cx = obs_cx
             self._obstacle_depth_m = obs_depth
+            if self._plan_obs_stable >= confirm and self._avoid_side is None:
+                self._avoid_side = self._choose_avoid_side(
+                    float(target[0]), obs_cx, closer_mask, origin)
             if self._plan_obs_stable >= self.PLAN_LOCK_FRAMES:
                 self._lock_plan(has_obstacle=True)
         elif self._avoid_side is not None:
-            # Obstacle plan in progress (clearing / holding) — keep locking it
+            # Confirmed obstacle plan in progress (clearing / holding)
             self._plan_obs_stable += 1
             self._plan_clear_stable = 0
             if self._plan_obs_stable >= self.PLAN_LOCK_FRAMES:
                 self._lock_plan(has_obstacle=True)
         else:
+            # Clear corridor — reset unconfirmed obstacle streaks
             self._plan_clear_stable += 1
             self._plan_obs_stable = 0
+            self._last_obs_cx = None
+            self._obstacle_depth_m = None
             if self._plan_clear_stable >= self.PLAN_LOCK_FRAMES:
                 self._lock_plan(has_obstacle=False)
 
@@ -732,11 +764,14 @@ class BeltAdapter(FeedbackDevice):
                 f'[BeltPlan] LOCKED avoid side={self._avoid_side} '
                 f'obs_cx={self._last_obs_cx:.0f} '
                 f'obs_depth={self._obstacle_depth_m:.2f}m '
-                f'(static scene — will not replan)'
+                f'(static chair — will not replan)'
             )
         else:
             self._avoidance_active = False
-            print('[BeltPlan] LOCKED direct approach (corridor clear)')
+            self._avoid_side = None
+            self._last_obs_cx = None
+            self._obstacle_depth_m = None
+            print('[BeltPlan] LOCKED direct approach (no chair / clear corridor)')
 
     def _smooth_bearing(self, angle_deg: float) -> float:
         """Exponential circular smoothing to reduce motor thrash from jitter."""

@@ -61,6 +61,19 @@ def _mid_obstacle(depth, depth_m=0.8):
     return d
 
 
+def _feed(belt, detections, depth_img=None, n=1):
+    """Run n update frames, clearing cue hold so continuous steering can run."""
+    for _ in range(n):
+        belt.update(_ctx(detections, depth_img=depth_img))
+        belt._cue_hold_until = 0.0
+        belt._last_dir_change_time = 0.0
+
+
+def _confirm_obstacle_frames(belt):
+    """Frames needed before avoidance steering arms (respects lowered PLAN_LOCK)."""
+    return min(belt.OBSTACLE_CONFIRM_FRAMES, belt.PLAN_LOCK_FRAMES)
+
+
 def _uncalibrated_belt(tmp_path, monkeypatch):
     """BeltAdapter without loading the on-disk navel calibration."""
     from server.feedback_devices.adapters import belt_adapter as ba
@@ -275,10 +288,7 @@ class TestBeltAvoidance:
         belt._navel_motor_index = None  # ANGLE mode for assertions
         depth = _mid_obstacle(_depth_map(fill_m=2.5))
 
-        belt.update(_ctx([_det(320, 240, 2.5)], depth_img=depth))
-        belt._cue_hold_until = 0.0
-        belt._last_dir_change_time = 0.0
-        belt.update(_ctx([_det(320, 240, 2.5)], depth_img=depth))
+        _feed(belt, [_det(320, 240, 2.5)], depth, n=_confirm_obstacle_frames(belt))
         assert belt.get_status()['avoidance_active'] is True
         assert not any(p.get('orientation') == 0b101000 for p in fake.pulses)
         assert fake.commands  # continuous steering to waypoint
@@ -290,10 +300,7 @@ class TestBeltAvoidance:
         depth = _mid_obstacle(_depth_map(fill_m=2.5))
 
         # Target on the left of the FOV → pass left of obstacle
-        belt.update(_ctx([_det(120, 240, 2.5)], depth_img=depth))
-        belt._cue_hold_until = 0.0
-        belt._last_dir_change_time = 0.0
-        belt.update(_ctx([_det(120, 240, 2.5)], depth_img=depth))
+        _feed(belt, [_det(120, 240, 2.5)], depth, n=_confirm_obstacle_frames(belt))
         status = belt.get_status()
         assert status['avoidance_active'] is True
         assert status['avoid_side'] == 'left'
@@ -306,10 +313,7 @@ class TestBeltAvoidance:
         belt._navel_motor_index = None  # ANGLE mode for assertions
         depth = _mid_obstacle(_depth_map(fill_m=2.5))
 
-        belt.update(_ctx([_det(520, 240, 2.5)], depth_img=depth))
-        belt._cue_hold_until = 0.0
-        belt._last_dir_change_time = 0.0
-        belt.update(_ctx([_det(520, 240, 2.5)], depth_img=depth))
+        _feed(belt, [_det(520, 240, 2.5)], depth, n=_confirm_obstacle_frames(belt))
         status = belt.get_status()
         assert status['avoidance_active'] is True
         assert status['avoid_side'] == 'right'
@@ -323,15 +327,11 @@ class TestBeltAvoidance:
         belt._navel_motor_index = None  # ANGLE mode for assertions
         depth = _mid_obstacle(_depth_map(fill_m=2.5))
 
-        belt.update(_ctx([_det(120, 240, 2.5)], depth_img=depth))
-        belt._cue_hold_until = 0.0
-        belt._last_dir_change_time = 0.0
+        _feed(belt, [_det(120, 240, 2.5)], depth, n=_confirm_obstacle_frames(belt))
         assert belt.get_status()['avoid_side'] == 'left'
 
         # Target jumps right while still blocked — side stays locked
-        belt.update(_ctx([_det(520, 240, 2.5)], depth_img=depth))
-        belt._cue_hold_until = 0.0
-        belt._last_dir_change_time = 0.0
+        _feed(belt, [_det(520, 240, 2.5)], depth, n=1)
         assert belt.get_status()['avoid_side'] == 'left'
 
     def test_exits_avoidance_after_corridor_clear(self):
@@ -341,22 +341,14 @@ class TestBeltAvoidance:
         blocked = _mid_obstacle(_depth_map(fill_m=2.5))
         clear = _depth_map(fill_m=2.5)
 
-        belt.update(_ctx([_det(520, 240, 2.5)], depth_img=blocked))
-        belt._cue_hold_until = 0.0
-        belt._last_dir_change_time = 0.0
+        _feed(belt, [_det(520, 240, 2.5)], blocked, n=_confirm_obstacle_frames(belt))
         assert belt.get_status()['avoidance_active'] is True
 
         # Brief clears should NOT exit yet
-        for _ in range(5):
-            belt.update(_ctx([_det(520, 240, 2.5)], depth_img=clear))
-        belt._cue_hold_until = 0.0
-        belt._last_dir_change_time = 0.0
+        _feed(belt, [_det(520, 240, 2.5)], clear, n=5)
         assert belt.get_status()['avoidance_active'] is True
 
-        for _ in range(BeltAdapter.CLEAR_FRAMES_TO_EXIT):
-            belt.update(_ctx([_det(520, 240, 2.5)], depth_img=clear))
-        belt._cue_hold_until = 0.0
-        belt._last_dir_change_time = 0.0
+        _feed(belt, [_det(520, 240, 2.5)], clear, n=BeltAdapter.CLEAR_FRAMES_TO_EXIT)
 
         assert belt.get_status()['avoidance_active'] is False
         # Side may be retained once a plan is locked (static strategy)
@@ -374,12 +366,8 @@ class TestBeltAvoidance:
         blocked = _mid_obstacle(_depth_map(fill_m=2.5))
         clear = _depth_map(fill_m=2.5)
 
-        belt.update(_ctx([_det(520, 240, 2.5)], depth_img=blocked))
-        belt._cue_hold_until = 0.0
-        belt._last_dir_change_time = 0.0
-        belt.update(_ctx([_det(520, 240, 2.5)], depth_img=clear))
-        belt._cue_hold_until = 0.0
-        belt._last_dir_change_time = 0.0
+        _feed(belt, [_det(520, 240, 2.5)], blocked, n=_confirm_obstacle_frames(belt))
+        _feed(belt, [_det(520, 240, 2.5)], clear, n=1)
         viz = belt.get_debug_viz()
         assert belt.get_status()['avoidance_active'] is True
         assert viz.get('phase') == 'avoid_B_clearing'
@@ -393,15 +381,11 @@ class TestBeltAvoidance:
         belt._navel_motor_index = None  # ANGLE mode for assertions
         blocked = _mid_obstacle(_depth_map(fill_m=2.5))
 
-        belt.update(_ctx([_det(520, 240, 2.5)], depth_img=blocked))
-        belt._cue_hold_until = 0.0
-        belt._last_dir_change_time = 0.0
+        _feed(belt, [_det(520, 240, 2.5)], blocked, n=_confirm_obstacle_frames(belt))
         assert belt.get_status()['avoidance_active'] is True
 
         # Bottle briefly missing from detections (occlusion)
-        belt.update(_ctx([], depth_img=blocked))
-        belt._cue_hold_until = 0.0
-        belt._last_dir_change_time = 0.0
+        _feed(belt, [], blocked, n=1)
         assert belt.get_status()['avoidance_active'] is True
         assert belt.get_debug_viz().get('phase') == 'avoid_A_hold'
 
@@ -412,9 +396,7 @@ class TestBeltAvoidance:
         depth = _depth_map(fill_m=2.5)
         depth[360:480, 200:440] = 0.6
 
-        belt.update(_ctx([_det(320, 240, 2.5)], depth_img=depth))
-        belt._cue_hold_until = 0.0
-        belt._last_dir_change_time = 0.0
+        _feed(belt, [_det(320, 240, 2.5)], depth, n=_confirm_obstacle_frames(belt))
         assert belt.get_status()['avoidance_active'] is False
 
     def test_no_avoidance_after_handoff(self):
@@ -423,14 +405,78 @@ class TestBeltAvoidance:
         belt._navel_motor_index = None  # ANGLE mode for assertions
         depth = _mid_obstacle(_depth_map(fill_m=0.4), depth_m=0.2)
 
-        belt.update(_ctx([_det(320, 240, 2.5)], depth_img=_depth_map(fill_m=2.5)))
-        belt._cue_hold_until = 0.0
-        belt._last_dir_change_time = 0.0
-        belt.update(_ctx([_det(320, 240, 0.4)], depth_img=depth))
-        belt._cue_hold_until = 0.0
-        belt._last_dir_change_time = 0.0
+        _feed(belt, [_det(320, 240, 2.5)], _depth_map(fill_m=2.5), n=1)
+        _feed(belt, [_det(320, 240, 0.4)], depth, n=1)
         assert belt.get_status()['in_approach'] is False
         assert belt.get_status()['avoidance_active'] is False
+
+
+class TestBeltUnifiedClearAndObstacle:
+    """One codebase must handle clear-path and obstacle trials equally well."""
+
+    def test_single_frame_noise_does_not_start_avoidance(self, tmp_path, monkeypatch):
+        belt = _uncalibrated_belt(tmp_path, monkeypatch)
+        belt._navel_motor_index = None
+        clear = _depth_map(fill_m=2.5)
+        noisy = _mid_obstacle(clear)
+
+        _feed(belt, [_det(320, 240, 2.5)], clear, n=2)
+        _feed(belt, [_det(320, 240, 2.5)], noisy, n=1)  # one-frame glitch
+        _feed(belt, [_det(320, 240, 2.5)], clear, n=2)
+
+        status = belt.get_status()
+        assert status['avoidance_active'] is False
+        assert status['avoid_side'] is None
+        viz = belt.get_debug_viz()
+        assert viz.get('steer_x') == 320 or abs(viz.get('steer_x', 0) - 320) < 1
+
+    def test_clear_path_locks_direct_and_steers_to_target(self, tmp_path, monkeypatch):
+        belt = _uncalibrated_belt(tmp_path, monkeypatch)
+        belt._navel_motor_index = None
+        belt.PLAN_LOCK_FRAMES = 3
+        clear = _depth_map(fill_m=2.5)
+
+        _feed(belt, [_det(520, 240, 2.5)], clear, n=3)
+        status = belt.get_status()
+        assert status['plan_locked'] is True
+        assert status['plan_has_obstacle'] is False
+        assert status['navigation_mode'] == 'direct'
+        assert status['avoidance_active'] is False
+        angle = belt._virtual_belt.commands[-1]['orientation']
+        assert 0 < angle <= 90  # right of center → toward bottle
+
+    def test_locked_direct_ignores_late_false_obstacle(self, tmp_path, monkeypatch):
+        belt = _uncalibrated_belt(tmp_path, monkeypatch)
+        belt._navel_motor_index = None
+        belt.PLAN_LOCK_FRAMES = 3
+        clear = _depth_map(fill_m=2.5)
+        noisy = _mid_obstacle(clear)
+
+        _feed(belt, [_det(320, 240, 2.5)], clear, n=3)
+        assert belt.get_status()['navigation_mode'] == 'direct'
+
+        _feed(belt, [_det(320, 240, 2.5)], noisy, n=8)
+        status = belt.get_status()
+        assert status['plan_locked'] is True
+        assert status['plan_has_obstacle'] is False
+        assert status['navigation_mode'] == 'direct'
+        assert status['avoidance_active'] is False
+        assert belt.get_debug_viz().get('phase') == 'approach'
+        assert abs(belt.get_debug_viz().get('steer_x', 0) - 320) < 1
+
+    def test_sustained_obstacle_still_enters_avoidance(self, tmp_path, monkeypatch):
+        belt = _uncalibrated_belt(tmp_path, monkeypatch)
+        belt._navel_motor_index = None
+        depth = _mid_obstacle(_depth_map(fill_m=2.5))
+
+        # Fewer than confirm → still clear-path steering
+        _feed(belt, [_det(520, 240, 2.5)], depth, n=_confirm_obstacle_frames(belt) - 1)
+        assert belt.get_status()['avoidance_active'] is False
+        assert belt.get_debug_viz().get('phase') in ('approach', 'approach_confirming_obs')
+
+        _feed(belt, [_det(520, 240, 2.5)], depth, n=1)
+        assert belt.get_status()['avoidance_active'] is True
+        assert belt.get_status()['avoid_side'] == 'right'
 
 
 class TestBeltPlanFreeze:
@@ -444,17 +490,14 @@ class TestBeltPlanFreeze:
         belt.PLAN_LOCK_FRAMES = 3
         depth = _mid_obstacle(_depth_map(fill_m=2.5))
 
-        for _ in range(3):
-            belt.update(_ctx([_det(120, 240, 2.5)], depth_img=depth))
-            belt._cue_hold_until = 0.0
+        _feed(belt, [_det(120, 240, 2.5)], depth, n=3)
         assert belt.get_status()['plan_locked'] is True
         assert belt.get_status()['plan_has_obstacle'] is True
         assert belt.get_status()['avoid_side'] == 'left'
+        assert belt.get_status()['navigation_mode'] == 'avoid'
 
         # Target jumps to the right — locked plan must keep left
-        for _ in range(5):
-            belt.update(_ctx([_det(520, 240, 2.5)], depth_img=depth))
-            belt._cue_hold_until = 0.0
+        _feed(belt, [_det(520, 240, 2.5)], depth, n=5)
         assert belt.get_status()['avoid_side'] == 'left'
         assert belt.get_status()['plan_locked'] is True
 
@@ -468,12 +511,11 @@ class TestBeltPlanFreeze:
         belt.PLAN_LOCK_FRAMES = 3
         clear = _depth_map(fill_m=2.5)
 
-        for _ in range(3):
-            belt.update(_ctx([_det(320, 240, 2.5)], depth_img=clear))
-            belt._cue_hold_until = 0.0
+        _feed(belt, [_det(320, 240, 2.5)], clear, n=3)
         assert belt.get_status()['plan_locked'] is True
         assert belt.get_status()['plan_has_obstacle'] is False
         assert belt.get_status()['avoidance_active'] is False
+        assert belt.get_status()['navigation_mode'] == 'direct'
 
     def test_idle_unlocks_plan(self, tmp_path, monkeypatch):
         from server.feedback_devices.adapters import belt_adapter as ba
@@ -484,9 +526,7 @@ class TestBeltPlanFreeze:
         belt._navel_motor_index = None
         belt.PLAN_LOCK_FRAMES = 2
         depth = _mid_obstacle(_depth_map(fill_m=2.5))
-        for _ in range(2):
-            belt.update(_ctx([_det(120, 240, 2.5)], depth_img=depth))
-            belt._cue_hold_until = 0.0
+        _feed(belt, [_det(120, 240, 2.5)], depth, n=2)
         assert belt.get_status()['plan_locked'] is True
 
         for _ in range(BeltAdapter.TARGET_MISS_TOLERANCE + 1):
