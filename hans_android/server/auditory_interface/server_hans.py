@@ -27,6 +27,99 @@ CUSTOM_API_URL = f"{API_URL.rstrip('/')}/v1/chat/completions"
 # The internal URL of your FastAPI server
 FASTAPI_URL = "http://localhost:8000/internal"
 
+# Fixed experimental recovery condition for the entire server session.
+# Change only this value before starting the server.
+RECOVERY_CONDITION = int(os.getenv("HANS_RECOVERY_CONDITION", "1"))
+RECOVERY_CONDITION_LABELS = {
+    1: "Unguided exploration",
+    2: "Similarity-guided exploration",
+}
+if RECOVERY_CONDITION not in RECOVERY_CONDITION_LABELS:
+    raise ValueError(
+        f"Invalid RECOVERY_CONDITION={RECOVERY_CONDITION}. Allowed values: 1 or 2."
+    )
+
+
+SEMANTIC_HINTS = {
+    "banana": ["apple", "orange", "pear"],
+    "apple": ["banana", "orange", "pear"],
+    "orange": ["banana", "apple", "pear"],
+    "pear": ["banana", "apple", "orange"],
+    "cup": ["mug", "bowl", "bottle"],
+    "mug": ["cup", "bowl"],
+    "bowl": ["cup", "mug"],
+    "bottle": ["cup", "mug"],
+}
+
+
+def _direction_from_location(location: str) -> str:
+    if not location:
+        return "the scene"
+    lower = location.lower()
+    if "left" in lower and "right" not in lower:
+        return "left"
+    if "right" in lower and "left" not in lower:
+        return "right"
+    if "top" in lower and "bottom" not in lower:
+        return "top"
+    if "bottom" in lower and "top" not in lower:
+        return "bottom"
+    if "center" in lower:
+        return "center"
+    return "scene"
+
+
+def _article(word: str) -> str:
+    if not word:
+        return "a"
+    return "an" if word[0].lower() in "aeiou" else "a"
+
+
+def _missing_target_response(target_name: str, visible_objects: list) -> str:
+    target_name = target_name.strip()
+    generic = (
+        f"{target_name} is not currently in the field of view. "
+        "Move the camera around to look for it. I will notify you when it is detected."
+    )
+
+    if RECOVERY_CONDITION == 1:
+        return generic
+
+    if not visible_objects:
+        return generic
+
+    target_lower = target_name.lower()
+    related_names = {name.lower() for name in SEMANTIC_HINTS.get(target_lower, [])}
+    ref_name = None
+    for obj in visible_objects:
+        obj_name = obj.get("name", "")
+        if not obj_name:
+            continue
+        if obj_name.lower() == target_lower:
+            continue
+        if obj_name.lower() in related_names:
+            ref_name = obj_name
+            break
+
+    if ref_name is None:
+        return generic
+
+    location = next((obj.get("location", "") for obj in visible_objects if obj.get("name") == ref_name), "")
+    direction = _direction_from_location(location)
+    ref_article = _article(ref_name)
+    if direction == "scene":
+        return (
+            f"{target_name} is not currently in the field of view. "
+            f"There is {ref_article} {ref_name} in view. Move the camera towards it; the {target_name.lower()} may be nearby. "
+            f"I will notify you when the {target_name} is detected."
+        )
+    return (
+        f"{target_name} is not currently in the field of view. "
+        f"There is {ref_article} {ref_name} on the {direction}. Move the camera towards it; the {target_name.lower()} may be nearby. "
+        f"I will notify you when the {target_name} is detected."
+    )
+
+
 def call_custom_vision_api(messages: list, max_tokens: int = 100):
     """Helper to route vision requests through the University Gateway."""
     if not API_KEY:
@@ -211,9 +304,7 @@ def set_target_with_fuzzy_match(target_name: str) -> str:
         if chosen in visible_names:
             return f"Target set to {chosen}."
         else:
-            # Preferred phrasing for non-visible target
-            return (f"{chosen} set as target. It is not currently in the field of view. "
-                    "Move the camera around to look for it. I will notify you when it is detected.")
+            return _missing_target_response(chosen, state.get("visible_objects", []))
 
     except Exception as e:
         return f"Error setting target: {str(e)}"
@@ -308,6 +399,16 @@ def add_targets_to_list(target_names: list[str], mode: str = "unordered") -> str
         # Build response
         response = f"Target list set to {mode} mode:\n"
         response += "\n".join(validation_status)
+
+        visible_count = sum(1 for name in processed_targets if name in visible_names)
+        missing = [name for name in processed_targets if name not in visible_names]
+        if len(processed_targets) > 1 and visible_count > 0 and missing:
+            missing_name = missing[0]
+            response += (
+                f"\n\n{missing_name} is not currently in the field of view. "
+                f"Move the camera around to look for it. I will notify you when it is detected. "
+                "Do you want to be guided to the visible target or keep searching for the missing one?"
+            )
         
         if rejected_targets:
             response += f"\n\n⚠️ Rejected (not valid classes): {', '.join(rejected_targets)}"
