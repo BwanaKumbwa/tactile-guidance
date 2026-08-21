@@ -86,9 +86,16 @@ DEPLOYMENT_MODE = True
 DEBUG_MODE = False
 DEPTH_FALLBACK = False
 METRIC_DEPTH = False
+RECOVERY_CONDITION = int(os.getenv("HANS_RECOVERY_CONDITION", "1"))
+
+if RECOVERY_CONDITION not in (1, 2):
+    raise ValueError(
+        f"Invalid HANS_RECOVERY_CONDITION={RECOVERY_CONDITION}. Allowed values: 1 or 2."
+    )
+
 
 def init_config():
-    global DEPLOYMENT_MODE, DEBUG_MODE, DEPTH_FALLBACK, METRIC_DEPTH
+    global DEPLOYMENT_MODE, DEBUG_MODE, DEPTH_FALLBACK, METRIC_DEPTH, RECOVERY_CONDITION
     args = parse_arguments()
     if args.mode == 'testing':
         DEPLOYMENT_MODE = False
@@ -99,6 +106,7 @@ def init_config():
     print(f"🔧 Configuration:")
     print(f"   Visual Mode: {DEPLOYMENT_MODE}")
     print(f"   Debug Mode: {'ON' if DEBUG_MODE else 'OFF'}")
+    print(f"   Recovery Condition: {RECOVERY_CONDITION} — {'Unguided exploration' if RECOVERY_CONDITION == 1 else 'Similarity-guided exploration'}")
     print(f"   Depth Fallback: {'ENABLED' if DEPTH_FALLBACK else 'DISABLED'}")
     if DEPTH_FALLBACK:
         depth_type = "UniDepth (metric)" if METRIC_DEPTH else "MiDaS (relative)"
