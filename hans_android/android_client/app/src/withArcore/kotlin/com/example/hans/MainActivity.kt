@@ -1,6 +1,7 @@
 package com.example.hans
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -42,20 +43,22 @@ import java.nio.ByteBuffer
 import java.util.Locale
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
+import androidx.constraintlayout.widget.ConstraintLayout
+import com.google.android.material.bottomnavigation.BottomNavigationView
 
 class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurfaceView.Renderer {
 
     // =================================================================
     // CONFIGURATION
     // =================================================================
-    private val SERVER_IP = "" // UPDATE
+    private val SERVER_IP = BuildConfig.SERVER_IP
     private val WEBSOCKET_URL = "ws://$SERVER_IP:8000/ws/video"
     private val COMMAND_URL = "http://$SERVER_IP:8000/api/command"
-    private val WAKE_WORD = "hans"
+    private val WAKE_WORD = BuildConfig.WAKE_WORD
 
     // BLUETOOTH MAC ADDRESSES
-    private val MAC_BRACELET = "00:A0:50:93:8A:AA" // UPDATE
-    private val MAC_BELT     = "00:A0:50:DA:2B:54" // UPDATE
+    private val MAC_BRACELET = BuildConfig.MAC_BRACELET
+    private val MAC_BELT     = BuildConfig.MAC_BELT
     // =================================================================
 
     // UI Components
@@ -63,20 +66,20 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
     private lateinit var overlayView: OverlayView
     private lateinit var tvStatus: TextView
     private lateinit var tvAiResponse: TextView
-    private lateinit var btnPtt: Button
+    private lateinit var btnPtt: ConstraintLayout
 
     // PTT State
-    // true only while the PTT button is physically held down.
-    // Both PTT and wake-word detection coexist — this flag tells onResults which path to take.
     @Volatile private var isPttRecording = false
-    private val PTT_COLOR_IDLE   = android.graphics.Color.parseColor("#CC2196F3") // Blue
-    private val PTT_COLOR_ACTIVE = android.graphics.Color.parseColor("#CCCC0000") // Red
+    private val PTT_COLOR_IDLE   = android.graphics.Color.parseColor("#CC2196F3")
+    private val PTT_COLOR_ACTIVE = android.graphics.Color.parseColor("#CCCC0000")
 
     // ARCore Session
     private var arSession: Session? = null
     @Volatile private var lastFrameTime = 0L
     @Volatile private var currentFrameThrottle = 100L
     private val cameraRenderer = CameraRenderer()
+    @Volatile private var isTextureSet = false
+
 
     // Networking
     private val client = OkHttpClient()
@@ -89,7 +92,11 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
     private lateinit var tts: TextToSpeech
     private lateinit var audioManager: AudioManager
 
-    // Bluetooth Managers
+    // Preferences
+    private val Intensity_Prefs = "FullIntensityPrefs"
+    private val Pattern_Prefs = "PatternPrefs"
+
+    // ✅ Bluetooth Managers - NOW FROM SINGLETON
     private lateinit var braceletManager: BleManager
     private lateinit var beltManager: BleManager
 
@@ -109,7 +116,32 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
         overlayView = findViewById(R.id.overlayView)
         tvStatus    = findViewById(R.id.tvStatus)
         tvAiResponse = findViewById(R.id.tvAiResponse)
-        btnPtt      = findViewById(R.id.btnPtt)
+        btnPtt      = findViewById(R.id.rootLayout)
+
+        val bottomNav = findViewById<BottomNavigationView>(R.id.bottomNavigation)
+
+        bottomNav.selectedItemId = R.id.menu_camera
+        bottomNav.setOnItemSelectedListener { item ->
+
+            when (item.itemId) {
+
+                R.id.menu_home -> {
+                    startActivity(Intent(this, BluetoothActivity::class.java))
+                    finish()
+                    true
+                }
+
+                R.id.menu_camera -> true
+
+                R.id.menu_setting -> {
+                    startActivity(Intent(this, SettingsActivity::class.java))
+                    finish()
+                    true
+                }
+
+                else -> false
+            }
+        }
 
         // OpenGL surface for ARCore
         surfaceView.preserveEGLContextOnPause = true
@@ -118,9 +150,12 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
         surfaceView.setRenderer(this)
         surfaceView.renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
 
-        // BLE
-        braceletManager = BleManager(this)
-        beltManager     = BleManager(this)
+        // BLE - Get singleton instances (already connected from BluetoothActivity)
+        braceletManager = BleManagerSingleton.getBraceletManager(this)
+        beltManager = BleManagerSingleton.getBeltManager(this)
+
+        Log.d("HANS", "✓ Bracelet manager obtained: ${braceletManager.isConnected()}")
+        Log.d("HANS", "✓ Belt manager obtained: ${beltManager.isConnected()}")
 
         // Permissions
         if (allPermissionsGranted()) {
@@ -161,9 +196,8 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
 
     private fun initSystem() {
         startWebSocket()
-        setupSpeech()      // Starts background wake-word listening
-        setupPttButton()   // Adds PTT as an additional input method
-        connectBleDevices()
+        setupSpeech()
+        setupPttButton()
     }
 
     // =================================================================
@@ -181,7 +215,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
             try {
                 depthImage = frame.acquireDepthImage16Bits()
             } catch (e: Exception) {
-                // Depth not ready yet — log once
                 Log.d("HANS", "Depth initializing... move phone around to help")
             }
 
@@ -190,16 +223,14 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
             var depthBytes = ByteArray(0)
             if (depthImage != null) {
                 depthBytes = depth16ToPngBytes(depthImage)
-                
-                // Only send if depth has actual data (not all zeros)
+
                 val hasDepthData = depthBytes.size > 100 && !isDepthAllZeros(depthBytes)
                 if (!hasDepthData) {
                     Log.d("HANS", "Depth detected but empty, waiting...")
-                    depthBytes = ByteArray(0) // Fall back to empty
+                    depthBytes = ByteArray(0)
                 }
             }
 
-            // Protocol: [4 bytes: RGB length][RGB bytes][Depth bytes]
             val buffer = ByteBuffer.allocate(4 + rgbBytes.size + depthBytes.size)
             buffer.putInt(rgbBytes.size)
             buffer.put(rgbBytes)
@@ -216,7 +247,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
     }
 
     private fun isDepthAllZeros(depthBytes: ByteArray): Boolean {
-        // Sample the middle of the depth frame
         val sampleSize = minOf(1000, depthBytes.size)
         val sample = depthBytes.takeLast(sampleSize)
         return sample.all { it == 0.toByte() }
@@ -224,21 +254,20 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
 
     override fun onResume() {
         super.onResume()
-        
-        // Try to get the pre-warmed session first (with type cast)
+        isTextureSet = false // Reset state
+
         val prewarmSession = ArCoreManager.resume()
         if (prewarmSession != null) {
             @Suppress("UNCHECKED_CAST")
             arSession = prewarmSession as? Session
         }
-        
-        // Fallback: if warmup didn't complete yet, initialize normally
+
         if (arSession == null && allPermissionsGranted()) {
             try {
                 if (ArCoreApk.getInstance().requestInstall(this, true) == ArCoreApk.InstallStatus.INSTALLED) {
                     arSession = Session(this)
                     val config = Config(arSession)
-                    
+
                     if (arSession!!.isDepthModeSupported(Config.DepthMode.AUTOMATIC)) {
                         config.depthMode = Config.DepthMode.AUTOMATIC
                         Log.i("HANS", "ARCore Depth Mode Enabled (fallback init)")
@@ -251,12 +280,18 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                 Log.e("HANS", "ARCore fallback init failed: $e")
             }
         }
-        
+
+        // CRITICAL: Split try-catches so if arSession fails, the GLSurfaceView still runs!
         try {
             arSession?.resume()
+        } catch (e: Exception) {
+            Log.e("HANS", "ARCore Session failed to resume: $e")
+        }
+
+        try {
             surfaceView.onResume()
         } catch (e: Exception) {
-            Log.e("HANS", "Camera not available")
+            Log.e("HANS", "GLSurfaceView failed to resume: $e")
         }
     }
 
@@ -285,7 +320,13 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
         val session = arSession ?: return
 
         try {
-            session.setCameraTextureName(cameraRenderer.textureId)
+            // Only set the texture ID once to avoid driver context thrashing on the IMG GPU
+            if (!isTextureSet && cameraRenderer.textureId != -1) {
+                session.setCameraTextureName(cameraRenderer.textureId)
+                isTextureSet = true
+                Log.d("HANS", "ARCore Camera Texture Bound Successfully: ${cameraRenderer.textureId}")
+            }
+
             val frame = session.update()
             cameraRenderer.draw(frame)
 
@@ -303,31 +344,99 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
     // MULTIPLEXED DATA SENDER (RGB + DEPTH)
     // =================================================================
     private fun yuvImageToJpegBytes(image: Image, targetWidth: Int): ByteArray {
-        val yBuffer = image.planes[0].buffer
-        val uBuffer = image.planes[1].buffer
-        val vBuffer = image.planes[2].buffer
+        val width = image.width
+        val height = image.height
 
-        val ySize = yBuffer.remaining()
-        val uSize = uBuffer.remaining()
-        val vSize = vBuffer.remaining()
+        // 1. Convert YUV_420_888 Image to a standardized, flat NV21 byte array (respecting strides)
+        val nv21 = yuv420ToNv21(image)
 
-        val nv21 = ByteArray(ySize + uSize + vSize)
-        yBuffer.get(nv21, 0, ySize)
-        vBuffer.get(nv21, ySize, vSize)
-        uBuffer.get(nv21, ySize + vSize, uSize)
-
-        val yuvImage = YuvImage(nv21, ImageFormat.NV21, image.width, image.height, null)
+        // 2. Compress NV21 to JPEG
+        val yuvImage = YuvImage(nv21, ImageFormat.NV21, width, height, null)
         val out = ByteArrayOutputStream()
-        yuvImage.compressToJpeg(Rect(0, 0, image.width, image.height), 80, out)
+        yuvImage.compressToJpeg(Rect(0, 0, width, height), 80, out)
 
-        val bmp = BitmapFactory.decodeByteArray(out.toByteArray(), 0, out.size())
+        val jpegBytes = out.toByteArray()
+
+        // 3. Safely decode to Bitmap
+        val bmp = BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size)
+            ?: throw IOException("ARCore Frame Converter: Failed to decode YUV image to Bitmap")
+
+        // 4. Scale down and compress to final output format
         val targetHeight = (targetWidth.toFloat() / bmp.width * bmp.height).toInt()
         val scaledBmp = Bitmap.createScaledBitmap(bmp, targetWidth, targetHeight, true)
 
         val finalOut = ByteArrayOutputStream()
         scaledBmp.compress(Bitmap.CompressFormat.JPEG, 60, finalOut)
+
+        // 5. CRITICAL: Recycle bitmaps instantly to prevent OOM/Garbage Collection lags on your AR thread
+        bmp.recycle()
+        scaledBmp.recycle()
+
         return finalOut.toByteArray()
     }
+
+    private fun yuv420ToNv21(image: Image): ByteArray {
+        val width = image.width
+        val height = image.height
+        val ySize = width * height
+        val uvSize = width * height / 2
+        val nv21 = ByteArray(ySize + uvSize)
+
+        val yPlane = image.planes[0]
+        val uPlane = image.planes[1]
+        val vPlane = image.planes[2]
+
+        val yBuffer = yPlane.buffer
+        val uBuffer = uPlane.buffer
+        val vBuffer = vPlane.buffer
+
+        val yRowStride = yPlane.rowStride
+        val yPixelStride = yPlane.pixelStride
+
+        // Copy Y Plane
+        if (yPixelStride == 1 && yRowStride == width) {
+            yBuffer.get(nv21, 0, ySize)
+        } else {
+            val rowData = ByteArray(width)
+            for (row in 0 until height) {
+                yBuffer.position(row * yRowStride)
+                yBuffer.get(rowData, 0, width)
+                System.arraycopy(rowData, 0, nv21, row * width, width)
+            }
+        }
+
+        // Copy Interleaved U/V Planes (NV21 requires V first, then U)
+        val vRowStride = vPlane.rowStride
+        val vPixelStride = vPlane.pixelStride
+        val uRowStride = uPlane.rowStride
+        val uPixelStride = uPlane.pixelStride
+
+        val uvWidth = width / 2
+        val uvHeight = height / 2
+
+        var nv21Idx = ySize
+
+        // Copy buffer content to local arrays for faster index traversal
+        val vBytes = ByteArray(vBuffer.remaining())
+        val uBytes = ByteArray(uBuffer.remaining())
+        vBuffer.get(vBytes)
+        uBuffer.get(uBytes)
+
+        for (row in 0 until uvHeight) {
+            val vRowStart = row * vRowStride
+            val uRowStart = row * uRowStride
+            for (col in 0 until uvWidth) {
+                val vIndex = vRowStart + (col * vPixelStride)
+                val uIndex = uRowStart + (col * uPixelStride)
+
+                // NV21 interleaving pattern: V, U, V, U...
+                nv21[nv21Idx++] = vBytes[vIndex]
+                nv21[nv21Idx++] = uBytes[uIndex]
+            }
+        }
+        return nv21
+    }
+
 
     private fun depth16ToPngBytes(depthImage: Image): ByteArray {
         val plane = depthImage.planes[0]
@@ -350,7 +459,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                 pixels[pixelIndex] = if (distanceMm == 0) {
                     android.graphics.Color.rgb(0, 0, 0)
                 } else {
-                    // Pack 16-bit depth into R and G channels
                     val r = (distanceMm shr 8) and 0xFF
                     val g = distanceMm and 0xFF
                     android.graphics.Color.rgb(r, g, 0)
@@ -370,14 +478,11 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
             tts.language = Locale.US
-            //tts.setPitch(0.6f)           // Lower pitch (0.5-2.0, default 1.0)
-            //tts.setSpeechRate(0.9f)      // Slightly slower (0.5-2.0, default 1.0)
             tts.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) {}
 
                 override fun onDone(utteranceId: String?) {
                     Log.d("HANS", "TTS finished — resuming background listening.")
-                    // Resume background wake-word listening after TTS finishes in both modes
                     restartListening()
                 }
 
@@ -387,29 +492,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                 }
             })
         }
-    }
-
-    // =================================================================
-    // BLUETOOTH
-    // =================================================================
-    private fun connectBleDevices() {
-        Thread {
-            try {
-                braceletManager.connect(MAC_BRACELET)
-                Thread.sleep(2000)
-                braceletManager.writeRawCommand(ByteArray(0))
-            } catch (e: Exception) { Log.e("HANS", "Bracelet Connect Error", e) }
-        }.start()
-
-        Thread {
-            try {
-                beltManager.connect(MAC_BELT)
-                Thread.sleep(2000)
-                beltManager.writeRawCommand(ByteArray(0))
-            } catch (e: Exception) { Log.e("HANS", "Belt Connect Error", e) }
-        }.start()
-
-        runOnUiThread { tvStatus.text = "Status: Connecting BLE..." }
     }
 
     // =================================================================
@@ -442,13 +524,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                     } else if (text.startsWith("{")) {
                         val jsonObj = JSONObject(text)
 
-                        if (jsonObj.has("vibration_command")) {
-                            val b64Command = jsonObj.getString("vibration_command")
-                            val commandBytes = Base64.decode(b64Command, Base64.NO_WRAP)
-                            braceletManager.writeRawCommand(commandBytes)
-                            beltManager.writeRawCommand(commandBytes)
-                        }
-
                         if (jsonObj.has("system_command")) {
                             when (jsonObj.getString("system_command")) {
                                 "idle_mode" -> {
@@ -470,18 +545,34 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                                 tts.speak(msg, TextToSpeech.QUEUE_ADD, params, "TTS_CMD")
                             }
                         }
+
+                        if (jsonObj.has("vibration_command")) {
+                            val b64Command = jsonObj.getString("vibration_command")
+                            val commandBytes = Base64.decode(b64Command, Base64.NO_WRAP)
+
+                            // Clean routing without duplicate parsing blocks
+                            val targetDevice = jsonObj.optString("target_device", "all")
+                            Log.d("HANS", "📡 Routing command to: $targetDevice")
+
+                            when (targetDevice) {
+                                "belt" -> beltManager.writeRawCommand(commandBytes)
+                                "bracelet" -> braceletManager.writeRawCommand(commandBytes)
+                                else -> {
+                                    beltManager.writeRawCommand(commandBytes)
+                                    braceletManager.writeRawCommand(commandBytes)
+                                }
+                            }
+                        }
                     }
-                } catch (e: Exception) { /* ignore parse errors */ }
+                } catch (e: Exception) {
+                    Log.e("HANS", "WebSocket parse error: ${e.message}")
+                }
             }
         })
     }
 
     // =================================================================
     // PUSH-TO-TALK
-    // Wake-word background listening always runs. Holding the button
-    // cancels the current session, records a PTT utterance, and sends
-    // it directly — no wake word required. After the response, background
-    // listening resumes automatically.
     // =================================================================
     private fun setupPttButton() {
         resetPttButton()
@@ -508,25 +599,20 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
 
         runOnUiThread {
             tvStatus.text = "🔴 Recording... release to send"
-            btnPtt.text = "Release to Send"
             btnPtt.setBackgroundColor(PTT_COLOR_ACTIVE)
         }
 
-        // Destroy the background recognizer
         try {
             speechRecognizer.cancel()
             speechRecognizer.destroy()
-            Log.d("HANS", "Background recognizer destroyed")
         } catch (e: Exception) {
             Log.e("HANS", "Recognizer destroy failed: $e")
         }
 
-        // Wait for audio system to fully reset
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
             if (!isPttRecording) return@postDelayed
 
             try {
-                // Create a NEW recognizer for PTT
                 speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this@MainActivity)
                 speechRecognizer.setRecognitionListener(object : RecognitionListener {
                     override fun onReadyForSpeech(params: Bundle?) {
@@ -537,12 +623,10 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                     override fun onBufferReceived(buffer: ByteArray?) {}
                     override fun onEndOfSpeech() {}
                     override fun onError(error: Int) {
-                        Log.e("HANS", "PTT error: $error")
                         val msg = when (error) {
-                            SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No speech detected — try again"
-                            SpeechRecognizer.ERROR_NO_MATCH       -> "Couldn't understand — try again"
-                            SpeechRecognizer.ERROR_AUDIO          -> "Mic error — try again"
-                            else                                  -> "Error ($error) — try again"
+                            SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No speech detected"
+                            SpeechRecognizer.ERROR_NO_MATCH       -> "Couldn't understand"
+                            else                                  -> "Error ($error)"
                         }
                         runOnUiThread { tvStatus.text = msg }
                         resetPttButton()
@@ -557,61 +641,44 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                                 runOnUiThread { tvAiResponse.text = "Processing: \"$spokenText\"" }
                                 sendToBackend(spokenText)
                             } else {
-                                runOnUiThread { tvStatus.text = "Nothing heard — try again" }
                                 restartListening()
                             }
                         }
                     }
-                    override fun onPartialResults(partialResults: Bundle?) {
-                        val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                        if (!partial.isNullOrEmpty() && partial[0].isNotBlank()) {
-                            runOnUiThread { tvAiResponse.text = "Hearing: \"${partial[0]}\"" }
-                        }
-                    }
+                    override fun onPartialResults(partialResults: Bundle?) {}
                     override fun onEvent(eventType: Int, params: Bundle?) {}
                 })
 
                 audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_MUTE, 0)
                 speechRecognizer.startListening(speechIntent)
-                Log.d("HANS", "PTT listening started (new recognizer)")
-
                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                     audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_UNMUTE, 0)
                 }, 300)
             } catch (e: Exception) {
-                Log.e("HANS", "PTT start failed: $e")
                 isPttRecording = false
                 resetPttButton()
                 restartListening()
             }
-        }, 800) // Increased delay to allow audio shutdown
+        }, 800)
     }
 
     private fun stopPttRecording() {
-        // Keep isPttRecording = true until onResults/onError fires so that
-        // the recognition callback knows which path to take.
         runOnUiThread {
             tvStatus.text = "Status: Processing..."
-            btnPtt.text   = "Processing..."
             btnPtt.isEnabled = false
         }
         try {
-            // stopListening() finalises the utterance and triggers onResults
-            // — unlike cancel() which discards it.
             speechRecognizer.stopListening()
         } catch (e: Exception) {
-            Log.e("HANS", "PTT stop failed: $e")
             isPttRecording = false
             runOnUiThread { resetPttButton() }
             restartListening()
         }
     }
 
-    /** Restores button to idle state. Safe to call from any thread. */
     private fun resetPttButton() {
         runOnUiThread {
             isPttRecording   = false
-            btnPtt.text      = "Hold to Speak"
             btnPtt.isEnabled = true
             btnPtt.setBackgroundColor(PTT_COLOR_IDLE)
         }
@@ -635,60 +702,33 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                         "Status: Listening for '$WAKE_WORD'..."
                 }
             }
-
             override fun onBeginningOfSpeech() {}
             override fun onRmsChanged(rmsdB: Float) {}
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onEndOfSpeech() {}
-
             override fun onError(error: Int) {
-                if (isPttRecording) {
-                    val msg = when (error) {
-                        SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No speech detected — try again"
-                        SpeechRecognizer.ERROR_NO_MATCH       -> "Couldn't understand — try again"
-                        SpeechRecognizer.ERROR_AUDIO          -> "Mic error — try again"
-                        else                                  -> "Mic error ($error) — try again"
-                    }
-                    runOnUiThread { tvStatus.text = msg }
-                    resetPttButton()
-                }
+                if (isPttRecording) resetPttButton()
                 restartListening()
             }
-
             override fun onResults(results: Bundle?) {
                 val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 if (!matches.isNullOrEmpty()) {
                     val spokenText = matches[0].lowercase().trim()
-
                     if (isPttRecording) {
                         resetPttButton()
                         if (spokenText.isNotBlank()) {
                             runOnUiThread { tvAiResponse.text = "Processing: \"$spokenText\"" }
                             sendToBackend(spokenText)
-                        } else {
-                            runOnUiThread { tvStatus.text = "Nothing heard — try again" }
-                            restartListening()
-                        }
+                        } else restartListening()
                     } else {
                         if (spokenText.contains(WAKE_WORD)) {
                             runOnUiThread { tvAiResponse.text = "Processing: $spokenText" }
                             sendToBackend(spokenText)
-                        } else {
-                            restartListening()
-                        }
+                        } else restartListening()
                     }
                 }
             }
-
-            override fun onPartialResults(partialResults: Bundle?) {
-                if (isPttRecording) {
-                    val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                    if (!partial.isNullOrEmpty() && partial[0].isNotBlank()) {
-                        runOnUiThread { tvAiResponse.text = "Hearing: \"${partial[0]}\"" }
-                    }
-                }
-            }
-
+            override fun onPartialResults(partialResults: Bundle?) {}
             override fun onEvent(eventType: Int, params: Bundle?) {}
         }
 
@@ -700,10 +740,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-US")
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "en-US")
-            putExtra(RecognizerIntent.EXTRA_ONLY_RETURN_LANGUAGE_PREFERENCE, true)
         }
-
         startListeningMuted()
     }
 
@@ -734,16 +771,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
         }
     }
 
-    private fun toggleListening() {
-        if (isListening) {
-            speechRecognizer.stopListening()
-            isListening = false
-        } else {
-            speechRecognizer.startListening(speechIntent)
-            isListening = true
-        }
-    }
-
     // =================================================================
     // BACKEND COMMUNICATION
     // =================================================================
@@ -752,19 +779,19 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
             put("text", text)
             put("bracelet_connected", braceletManager.isConnected())
             put("belt_connected",     beltManager.isConnected())
+            put("vibration", loadIntensity())
+            put("pattern", loadPattern())
         }
 
         val body    = json.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
         val request = Request.Builder().url(COMMAND_URL).post(body).build()
 
         client.newCall(request).enqueue(object : Callback {
-
             override fun onFailure(call: Call, e: IOException) {
                 runOnUiThread { tvAiResponse.text = "AI Error: Network Fail" }
-                resetPttButton()   // safe even if PTT was not active
+                resetPttButton()
                 restartListening()
             }
-
             override fun onResponse(call: Call, response: Response) {
                 val responseData = response.body?.string()
                 if (responseData != null) {
@@ -772,7 +799,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                         val jsonRes = JSONObject(responseData)
                         var answer  = jsonRes.optString("answer", "Done")
 
-                        // Speech rate tags
                         when {
                             answer.contains("[SPEED:SLOW]")   -> { tts.setSpeechRate(0.5f); answer = answer.replace("[SPEED:SLOW]", "") }
                             answer.contains("[SPEED:NORMAL]") -> { tts.setSpeechRate(1.0f); answer = answer.replace("[SPEED:NORMAL]", "") }
@@ -803,7 +829,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                             val params = Bundle()
                             params.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "TTS_REPLY")
                             tts.speak(answer, TextToSpeech.QUEUE_FLUSH, params, "TTS_REPLY")
-                            // TTS onDone → restartListening() — no manual restart needed here
                         }
 
                     } catch (e: Exception) {
@@ -852,12 +877,33 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
             }
         }
 
+    private fun loadIntensity(): JSONObject{
+        val prefs = getSharedPreferences(Intensity_Prefs, MODE_PRIVATE)
+
+        val vibration = JSONObject()
+        vibration.put("left", prefs.getInt("leftIntensity", 0))
+        vibration.put("bottom", prefs.getInt("bottomIntensity", 0))
+        vibration.put("right", prefs.getInt("rightIntensity", 0))
+        vibration.put("top", prefs.getInt("topIntensity", 0))
+        vibration.put("top_front", prefs.getInt("topFrontIntensity", 0))
+        vibration.put("top_back", prefs.getInt("topBackIntensity", 0))
+        vibration.put("belt", prefs.getInt("beltIntensity", 0))
+
+        return vibration
+    }
+
+    private fun loadPattern(): String{
+        val prefs = getSharedPreferences(Pattern_Prefs, MODE_PRIVATE)
+
+        return prefs.getString("PATTERN_CODE","VIB_PATTERN_SINGLE") ?: "VIB_PATTERN_SINGLE"
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         ArCoreManager.destroy()
         webSocket?.close(1000, "App closed")
-        braceletManager.disconnect()
-        beltManager.disconnect()
+        // Disconnect all BLE devices when app closes
+        BleManagerSingleton.disconnectAll()
         try { speechRecognizer.destroy() } catch (e: Exception) {}
         if (::tts.isInitialized) { tts.stop(); tts.shutdown() }
     }

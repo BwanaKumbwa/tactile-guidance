@@ -1,54 +1,58 @@
 {
-    "target_list": [],
+    "target_list": [
+        "banana"
+    ],
     "list_mode": "unordered",
     "grasped_objects": [
-        "cup"
+        "cup",
+        "banana"
     ],
     "calibration": {
-        "bottom": 30,
-        "top": 30,
-        "left": 30,
-        "right": 30
+        "left": 70,
+        "bottom": 65,
+        "right": 35,
+        "top": 40
     },
     "preferences": {
         "speech_speed": "normal",
         "verbosity": "low",
         "battery_saver": false,
-        "play_welcome_message": true
+        "play_welcome_message": true,
+        "vibration_pattern": "VIB_PATTERN_SINGLE"
     },
     "command_history": [],
     "world_map": {
         "myright": {
-            "location": "Middle Center, 0.88m",
-            "last_seen": "03:32:38 PM"
+            "location": "Middle Right, 0.46m",
+            "last_seen": "08:53:28 AM"
         },
         "myleft": {
-            "location": "Middle Center, 0.91m",
-            "last_seen": "03:32:37 PM"
+            "location": "Middle Right, 0.53m",
+            "last_seen": "03:19:46 PM"
         },
         "potted plant": {
-            "location": "Middle Center, 2.54m",
-            "last_seen": "12:50:40 AM"
+            "location": "Bottom Right, 1.00m",
+            "last_seen": "12:07:52 PM"
         },
         "clock": {
-            "location": "Middle Center, 0.34m",
-            "last_seen": "01:12:37 PM"
+            "location": "Middle Left, unknown depth",
+            "last_seen": "02:15:38 PM"
         },
         "cup": {
-            "location": "Middle Center, 0.51m",
-            "last_seen": "01:17:55 PM"
+            "location": "Middle Left, unknown depth",
+            "last_seen": "11:09:45 AM"
         },
         "bottle": {
-            "location": "Middle Center, 0.35m",
-            "last_seen": "01:12:57 PM"
+            "location": "Middle Center, unknown depth",
+            "last_seen": "09:54:58 AM"
         },
         "apple": {
-            "location": "Middle Center, 0.53m",
-            "last_seen": "01:12:25 PM"
+            "location": "Bottom Left, unknown depth",
+            "last_seen": "09:50:09 AM"
         },
         "bowl": {
-            "location": "Middle Right, 0.81m",
-            "last_seen": "01:12:56 PM"
+            "location": "Middle Right, unknown depth",
+            "last_seen": "01:31:33 PM"
         },
         "fork": {
             "location": "Top Center, 0.86m",
@@ -57,6 +61,10 @@
         "wine glass": {
             "location": "Middle Left, 0.55m",
             "last_seen": "01:11:39 PM"
+        },
+        "banana": {
+            "location": "Middle Center, 0.42m",
+            "last_seen": "08:53:28 AM"
         }
     }
 }

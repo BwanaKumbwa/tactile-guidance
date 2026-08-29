@@ -23,7 +23,10 @@ for path in ['/yolov5', '/strongsort', '/unidepth', '/midas']:
         sys.path.append(str(root) + path)
 
 from android_loader import AndroidSource
-from virtual_belt import VirtualBeltController
+#from virtual_belt import VirtualBeltController
+#from feedback_devices import BeltAdapter, MockFeedbackDevice, VirtualBeltController
+from feedback_devices import BeltAdapter, BraceletAdapter
+from feedback_devices import VirtualBeltController
 import master 
 from query_processing import HANSBrain
 from mcp.client.stdio import stdio_client
@@ -62,23 +65,44 @@ Examples:
         help="Enable debug logging"
     )
     
+    parser.add_argument(
+        "--depth-fallback",
+        action="store_true",
+        help="Enable ML-based depth estimation as fallback (noArcore only)"
+    )
+    
+    parser.add_argument(
+        "--metric-depth",
+        action="store_true",
+        help="Use UniDepth (metric) instead of MiDaS (faster but relative). Only with --depth-fallback"
+    )
+    
+
     return parser.parse_args()
 
 
 # Parse arguments at module load
 DEPLOYMENT_MODE = True
 DEBUG_MODE = False
+DEPTH_FALLBACK = False
+METRIC_DEPTH = False
 
 def init_config():
-    global DEPLOYMENT_MODE, DEBUG_MODE
+    global DEPLOYMENT_MODE, DEBUG_MODE, DEPTH_FALLBACK, METRIC_DEPTH
     args = parse_arguments()
     if args.mode == 'testing':
         DEPLOYMENT_MODE = False
     DEBUG_MODE = args.debug
+    DEPTH_FALLBACK = args.depth_fallback
+    METRIC_DEPTH = args.metric_depth
     
     print(f"🔧 Configuration:")
     print(f"   Visual Mode: {DEPLOYMENT_MODE}")
     print(f"   Debug Mode: {'ON' if DEBUG_MODE else 'OFF'}")
+    print(f"   Depth Fallback: {'ENABLED' if DEPTH_FALLBACK else 'DISABLED'}")
+    if DEPTH_FALLBACK:
+        depth_type = "UniDepth (metric)" if METRIC_DEPTH else "MiDaS (relative)"
+        print(f"   Depth Model: {depth_type}")
     print()
 
 # Initialize immediately
@@ -161,12 +185,29 @@ class SimArgs:
         self.relative = False
         self.mock_navigate = False
         self.save_video = False
+        self.depth_fallback = DEPTH_FALLBACK
+        self.metric_depth  = METRIC_DEPTH 
 
 def run_ai_logic():
     print("🧠 AI Vision Thread Started")
     android_loader = AndroidSource(frame_queue, img_size=640)
     args = SimArgs()
-    virtual_belt = VirtualBeltController(result_queue)
+    
+    # ✅ 1. Create TWO distinct routing controllers
+    belt_vbc = VirtualBeltController(result_queue, target_device="belt")
+    bracelet_vbc = VirtualBeltController(result_queue, target_device="bracelet")
+
+    # ✅ Create a dummy sink so legacy master.py logic doesn't override our belt adapter
+    dummy_legacy_belt = VirtualBeltController(result_queue=None)
+    
+    # ✅ 2. Pass the specific controllers to their respective adapters
+    belt = BeltAdapter(belt_vbc)
+    bracelet = BraceletAdapter(bracelet_vbc, vibration_intensities={'left': 50, 'right': 50})
+    
+    belt.connect()
+    bracelet.connect()
+    
+    feedback_devices = [belt, bracelet]
     
     try:
         master.run_experiment_logic(
@@ -175,11 +216,17 @@ def run_ai_logic():
             shared_state=shared_state,
             custom_loader=android_loader,
             result_queue=result_queue,
-            custom_belt=virtual_belt,
-            deployment_mode=DEPLOYMENT_MODE  # <--- ADD THIS LINE
+            custom_belt=dummy_legacy_belt,  # MUST use dummy so legacy logic doesn't mute the belt
+            feedback_devices=feedback_devices,
+            deployment_mode=DEPLOYMENT_MODE
         )
     except Exception as e:
         print(f"❌ Error in AI Loop: {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        belt.disconnect()
+        bracelet.disconnect()
 
 # Lifecycle (MCP startup)
 @asynccontextmanager
@@ -528,10 +575,60 @@ async def video_endpoint(websocket: WebSocket):
     finally:
         sender_future.cancel()
 
+class VibrationRequest(BaseModel):
+    left: int 
+    bottom: int
+    right: int
+    top: int 
+#     top_front: int
+#     top_back: int
+#     belt: int
+
 class CommandRequest(BaseModel):
     text: str
     bracelet_connected: bool = False
     belt_connected: bool = False
+    vibration : VibrationRequest
+    pattern: str = "VIB_PATTERN_SINGLE"
+
+MEMORY_FILE = Path("results") / "memory_participant_1.json"
+
+def update_memory_calibration_preferences(new_intensity, pattern):
+    try:
+        # Load previous memory
+        if MEMORY_FILE.exists():
+            with open(MEMORY_FILE, "r") as f:
+                memory = json.load(f)
+        else:
+            memory = {}
+
+        # Update calibration
+        memory["calibration"] = {
+            "left": new_intensity.get("left", 50),
+            "bottom": new_intensity.get("bottom", 50),
+            "right": new_intensity.get("right", 50),
+            "top": new_intensity.get("top", 50),
+            # "top_front": new_intensity.get("top_front", 50),
+            # "top_back": new_intensity.get("top_back", 50),
+            # "belt": new_intensity.get("belt", 50)
+        }
+
+        # Make sure there is preferences in the .json file
+        if "preferences" not in memory:
+            memory["preferences"] = {}
+
+        # Add pattern
+        memory["preferences"]["vibration_pattern"] = pattern
+
+        with open(MEMORY_FILE, "w") as f:
+            json.dump(memory, f, indent=4)
+
+        print("Memory calibration updated")
+        print(memory["calibration"])
+        print(memory["preferences"])
+
+    except Exception as e:
+        print(f"Failed updating memory calibration: {e}")
 
 @app.post("/api/command")
 async def process_command(req: CommandRequest):
@@ -539,6 +636,19 @@ async def process_command(req: CommandRequest):
 
     # Save hardware status to shared state so tools can read it
     shared_state.set_hardware_status(req.bracelet_connected, req.belt_connected)
+
+    #Receive intensity and pattern preferences from Android
+    new_intensity = {
+        "left": req.vibration.left or 50,
+        "bottom": req.vibration.bottom or 50,
+        "right": req.vibration.right or 50,
+        "top": req.vibration.top or 50,
+        # "top_front": req.vibration.top_front or 50,
+        # "top_back": req.vibration.top_back or 50,
+        # "belt": req.vibration.belt or 50,
+    }
+
+    update_memory_calibration_preferences(new_intensity, req.pattern)
 
     # Send information to memory logger
     mcp_queue.put({"instruction": "log_command", "value": req.text})

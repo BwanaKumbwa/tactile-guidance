@@ -1,11 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.Hans" parent="Theme.AppCompat.DayNight.NoActionBar"/>
+    <style name="Theme.Hans" parent="Theme.MaterialComponents.Light.NoActionBar">
+
+        <!-- PRIMARY COLOR (INI YANG KAMU MAU HIJAU) -->
+        <item name="colorPrimary">#7ED957</item>
+        <item name="colorPrimaryVariant">#65C466</item>
+        <item name="colorOnPrimary">@android:color/black</item>
+        <!-- SECONDARY -->
+        <item name="colorSecondary">#65C466</item>
+
+        <!-- BACKGROUND -->
+        <item name="android:colorBackground">@android:color/white</item>
+
+    </style>
     <style name="NumberPickerIntensity">
         <item name="android:textSize">43sp</item>
     </style>
     <style name="NumberPickerPattern">
-        <item name="android:textSize">18sp</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:textColorPrimary">@android:color/black</item>
+        <item name="android:textColor">@android:color/black</item>
     </style>
 </resources>
