@@ -246,6 +246,8 @@ class VisionPipeline:
         self._cmd_table:   dict  = {}
         # One-shot visibility notifier cache
         self._prev_visible_names: set = set()
+        # One-shot hand-visibility prompt flag
+        self._hand_guidance_prompt_sent: bool = False
 
     # Public API
 
@@ -716,6 +718,7 @@ class VisionPipeline:
         self._grasped            = False
         self._vibration_timer    = None
         self._last_known_grasp_t = 'NA'
+        self._hand_guidance_prompt_sent = False
         for dev in self._feedback_devices:
             if hasattr(dev, '_bc'):
                 bc = dev._bc
@@ -965,14 +968,22 @@ class VisionPipeline:
                         except Exception:
                             pass
 
-                        # If hand not visible, prompt user to bring hand into view
-                        hand_ids = [h + self._index_add for h in self._cfg.classes_hand]
-                        hand_visible = any(hid in visible_cls for hid in hand_ids)
-                        if not hand_visible:
+                    # One-shot hand-visibility prompt: send only when hand transitions from visible to absent
+                    # (or when hand is first absent after target detection)
+                    hand_ids = [h + self._index_add for h in self._cfg.classes_hand]
+                    hand_visible = any(hid in visible_cls for hid in hand_ids)
+                    
+                    if tgt_name in visible_names:  # Target is visible (regardless of just_detected)
+                        if not hand_visible and not self._hand_guidance_prompt_sent:
+                            # Hand not visible and we haven't sent the prompt yet
                             try:
                                 self._result_queue.put_nowait({"tts_command": "Please bring your hand into view to begin guidance."})
                             except Exception:
                                 pass
+                            self._hand_guidance_prompt_sent = True
+                        elif hand_visible and self._hand_guidance_prompt_sent:
+                            # Hand became visible, reset the flag for future prompts
+                            self._hand_guidance_prompt_sent = False
 
         except Exception:
             pass
