@@ -131,10 +131,13 @@ class BluetoothActivity : AppCompatActivity() {
 
                 // CONNECT BELT
                 if (connectBelt) {
+                    Log.e("HANS", "Connecting BRACELET to [$MAC_BRACELET]")
                     beltManager.connect(MAC_BELT)
                     Thread.sleep(1500)
 
                     beltConnected = beltManager.isConnected()
+                    Log.e("HANS", "Bracelet isConnected = $braceletConnected")
+
                 }
 
                 // CONNECT BRACELET

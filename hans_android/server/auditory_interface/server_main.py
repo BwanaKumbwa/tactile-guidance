@@ -580,9 +580,9 @@ class VibrationRequest(BaseModel):
     bottom: int
     right: int
     top: int 
-#     top_front: int
-#     top_back: int
-#     belt: int
+    top_front: int
+    top_back: int
+    belt: int
 
 class CommandRequest(BaseModel):
     text: str
@@ -608,9 +608,9 @@ def update_memory_calibration_preferences(new_intensity, pattern):
             "bottom": new_intensity.get("bottom", 50),
             "right": new_intensity.get("right", 50),
             "top": new_intensity.get("top", 50),
-            # "top_front": new_intensity.get("top_front", 50),
-            # "top_back": new_intensity.get("top_back", 50),
-            # "belt": new_intensity.get("belt", 50)
+            "top_front": new_intensity.get("top_front", 50),
+            "top_back": new_intensity.get("top_back", 50),
+            "belt": new_intensity.get("belt", 50)
         }
 
         # Make sure there is preferences in the .json file
@@ -643,9 +643,9 @@ async def process_command(req: CommandRequest):
         "bottom": req.vibration.bottom or 50,
         "right": req.vibration.right or 50,
         "top": req.vibration.top or 50,
-        # "top_front": req.vibration.top_front or 50,
-        # "top_back": req.vibration.top_back or 50,
-        # "belt": req.vibration.belt or 50,
+        "top_front": req.vibration.top_front or 50,
+        "top_back": req.vibration.top_back or 50,
+        "belt": req.vibration.belt or 50,
     }
 
     update_memory_calibration_preferences(new_intensity, req.pattern)

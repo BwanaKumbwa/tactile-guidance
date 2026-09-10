@@ -11,46 +11,46 @@ class PatternActivity : AppCompatActivity() {
 
     private val PATTERN_PREFS = "PatternPrefs"
     private var selectedIndex = 0
-    private lateinit var singleMotor: RelativeLayout
-    private lateinit var multiMotor: RelativeLayout
-    private lateinit var sequenceMotor: RelativeLayout
+    private lateinit var VIB_PATTERN_SINGLE: RelativeLayout
+    private lateinit var VIB_PATTERN_MULTI: RelativeLayout
+    private lateinit var VIB_PATTERN_SEQ: RelativeLayout
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_pattern)
 
-        singleMotor = findViewById(R.id.button_single)
-        multiMotor = findViewById(R.id.button_multi)
-        sequenceMotor = findViewById(R.id.button_sequence)
+        VIB_PATTERN_SINGLE = findViewById(R.id.button_single)
+        VIB_PATTERN_MULTI = findViewById(R.id.button_multi)
+        VIB_PATTERN_SEQ = findViewById(R.id.button_sequence)
 
         val selectButton = findViewById<Button>(R.id.button_select_pattern)
 
         val prefs = getSharedPreferences(PATTERN_PREFS, MODE_PRIVATE)
 
-        // Load pattern yang tersimpan
+        // Load pattern that is saved
         selectedIndex = prefs.getInt("PATTERN_INDEX", 0)
 
         updateSelection()
 
-        // Pilih Single
-        singleMotor.setOnClickListener {
+        // Single Pattern
+        VIB_PATTERN_SINGLE.setOnClickListener {
             selectedIndex = 0
             updateSelection()
         }
 
-        // Pilih Multi Continuous
-        multiMotor.setOnClickListener {
+        // Multimotor Continuous Pattern
+        VIB_PATTERN_MULTI.setOnClickListener {
             selectedIndex = 1
             updateSelection()
         }
 
-        // Pilih Sequence
-        sequenceMotor.setOnClickListener {
+        // Multimotor Sequence Pattern
+        VIB_PATTERN_SEQ.setOnClickListener {
             selectedIndex = 2
             updateSelection()
         }
 
-        // Simpan pilihan
+        // Save option
         selectButton.setOnClickListener {
 
             val patternCode = when (selectedIndex) {
@@ -99,14 +99,14 @@ class PatternActivity : AppCompatActivity() {
     }
 
     private fun updateSelection() {
-        singleMotor.setBackgroundResource(R.drawable.bg_outline)
-        multiMotor.setBackgroundResource(R.drawable.bg_outline)
-        sequenceMotor.setBackgroundResource(R.drawable.bg_outline)
+        VIB_PATTERN_SINGLE.setBackgroundResource(R.drawable.bg_outline)
+        VIB_PATTERN_MULTI.setBackgroundResource(R.drawable.bg_outline)
+        VIB_PATTERN_SEQ.setBackgroundResource(R.drawable.bg_outline)
 
         when (selectedIndex) {
-            0 -> singleMotor.setBackgroundResource(R.drawable.bg_green)
-            1 -> multiMotor.setBackgroundResource(R.drawable.bg_green)
-            2 -> sequenceMotor.setBackgroundResource(R.drawable.bg_green)
+            0 -> VIB_PATTERN_SINGLE.setBackgroundResource(R.drawable.bg_green)
+            1 -> VIB_PATTERN_MULTI.setBackgroundResource(R.drawable.bg_green)
+            2 -> VIB_PATTERN_SEQ.setBackgroundResource(R.drawable.bg_green)
         }
     }
 }

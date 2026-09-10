@@ -21,11 +21,11 @@ class BleManager(private val context: Context) {
     // =================================================================
     // UUIDs
     // =================================================================
-    private val SERVICE_UUID = UUID.fromString("0000fe51-0000-1000-8000-00805f9b34fb")
+    private val SERVICE_UUID = UUID.fromString("0000fe55-0000-1000-8000-00805f9b34fb")
     private val KEEP_ALIVE   = UUID.fromString("0000fe02-0000-1000-8000-00805f9b34fb")
-    private val WRITE_UUID   = UUID.fromString("0000fe03-0000-1000-8000-00805f9b34fb")
+    private val WRITE_UUID   = UUID.fromString("0000fe15-0000-1000-8000-00805f9b34fb")
     private val PARAM_UUID   = UUID.fromString("0000fe05-0000-1000-8000-00805f9b34fb")
-    private val NOTIFY_UUID  = UUID.fromString("0000fe06-0000-1000-8000-00805f9b34fb")
+    private val NOTIFY_UUID  = UUID.fromString("0000fe16-0000-1000-8000-00805f9b34fb")
     private val CCCD_UUID    = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
 
     // Robust Command Queue
@@ -49,7 +49,24 @@ class BleManager(private val context: Context) {
             isExecuting = false
         }
 
-        bluetoothGatt = device.connectGatt(context, false, gattCallback)
+        Log.e("BLE", "========================================")
+        Log.e("BLE", "Preparing GATT connection")
+        Log.e("BLE", "Device name    = ${device.name}")
+        Log.e("BLE", "Device address = ${device.address}")
+        Log.e("BLE", "Target address = $deviceAddress")
+        Log.e("BLE", "========================================")
+
+        bluetoothGatt = device.connectGatt(
+            context,
+            false,
+            gattCallback,
+            BluetoothDevice.TRANSPORT_LE
+        )
+
+        Log.e(
+            "BLE",
+            "connectGatt() returned = ${bluetoothGatt != null}"
+        )
     }
 
     // --- ROBUST QUEUE SYSTEM ---
@@ -170,41 +187,125 @@ class BleManager(private val context: Context) {
     }
 
     private val gattCallback = object : BluetoothGattCallback() {
-        override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
-            connectionState = newState
-            Log.i("BLE", "[$deviceName] Connection state changed: $newState (status: $status)")
+        override fun onConnectionStateChange(
+            gatt: BluetoothGatt,
+            status: Int,
+            newState: Int
+        ) {
+            Log.e("BLE", "========================================")
+            Log.e("BLE", "[$deviceName] onConnectionStateChange()")
+            Log.e("BLE", "[$deviceName] address = ${gatt.device.address}")
+            Log.e("BLE", "[$deviceName] status = $status")
+            Log.e("BLE", "[$deviceName] newState = $newState")
+            Log.e("BLE", "========================================")
 
-            if (newState == BluetoothProfile.STATE_CONNECTED) {
-                Log.i("BLE", "[$deviceName] Connected! Discovering services in 1s...")
-                handler.postDelayed({ gatt.discoverServices() }, 1000)
-            } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-                synchronized(commandQueue) {
-                    commandQueue.clear()
-                    isExecuting = false
+            connectionState = newState
+
+            when (newState) {
+
+                BluetoothProfile.STATE_CONNECTED -> {
+                    Log.e("BLE", "[$deviceName] >>> CONNECTED <<<")
+
+                    handler.postDelayed({
+                        Log.e("BLE", "[$deviceName] Starting service discovery...")
+
+                        val result = gatt.discoverServices()
+
+                        Log.e(
+                            "BLE",
+                            "[$deviceName] discoverServices() returned = $result"
+                        )
+                    }, 1000)
+                }
+
+                BluetoothProfile.STATE_DISCONNECTED -> {
+                    Log.e(
+                        "BLE",
+                        "[$deviceName] >>> DISCONNECTED <<< status=$status"
+                    )
+
+                    synchronized(commandQueue) {
+                        commandQueue.clear()
+                        isExecuting = false
+                    }
+
+                    // Penting: tutup GATT setelah disconnect
+                    gatt.close()
+                }
+
+                BluetoothProfile.STATE_CONNECTING -> {
+                    Log.e("BLE", "[$deviceName] >>> CONNECTING <<<")
+                }
+
+                BluetoothProfile.STATE_DISCONNECTING -> {
+                    Log.e("BLE", "[$deviceName] >>> DISCONNECTING <<<")
+                }
+
+                else -> {
+                    Log.e(
+                        "BLE",
+                        "[$deviceName] >>> UNKNOWN STATE: $newState <<<"
+                    )
                 }
             }
         }
 
-        override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
+        override fun onServicesDiscovered(
+            gatt: BluetoothGatt,
+            status: Int
+        ) {
+            Log.i(
+                "BLE",
+                "[$deviceName] onServicesDiscovered status=$status"
+            )
+
             if (status == BluetoothGatt.GATT_SUCCESS) {
-                Log.i("BLE", "[$deviceName] Services discovered! Initializing...")
+
+                Log.i("BLE", "[$deviceName] Services discovered!")
+
+                for (service in gatt.services) {
+                    Log.i("BLE", "SERVICE: ${service.uuid}")
+
+                    for (characteristic in service.characteristics) {
+                        Log.i(
+                            "BLE",
+                            "  CHARACTERISTIC: ${characteristic.uuid}"
+                        )
+                    }
+                }
 
                 val service = gatt.getService(SERVICE_UUID)
-                if (service == null) return
+
+                if (service == null) {
+                    Log.e(
+                        "BLE",
+                        "[$deviceName] ❌ SERVICE FE55 NOT FOUND!"
+                    )
+                    return
+                }
+
+                Log.i("BLE", "[$deviceName] ✓ SERVICE FE55 FOUND")
 
                 subscribeTo(KEEP_ALIVE, "Keep Alive (FE02)")
-                subscribeTo(NOTIFY_UUID, "Param Notify (FE06)")
+                subscribeTo(NOTIFY_UUID, "Param Notify (FE16)")
 
-                // SWITCH TO APP MODE
-                writeParam(byteArrayOf(0x01, 0x81.toByte(), 0x03), "Set Belt to APP MODE")
+                writeParam(
+                    byteArrayOf(0x01, 0x81.toByte(), 0x03),
+                    "Set Belt to APP MODE"
+                )
 
-                // Clear existing vibrations
-                val stopBytes = byteArrayOf(0x30, 0xFF.toByte())
+                val stopBytes = byteArrayOf(
+                    0x30,
+                    0xFF.toByte()
+                )
+
                 writeRawCommand(stopBytes)
 
-                handler.postDelayed({
-                    Log.i("BLE", "[$deviceName] ✓✓✓ READY FOR VIBRATION COMMANDS ✓✓✓")
-                }, 1000)
+            } else {
+                Log.e(
+                    "BLE",
+                    "[$deviceName] ❌ Service discovery FAILED! status=$status"
+                )
             }
         }
 
