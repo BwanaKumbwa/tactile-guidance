@@ -1,7 +1,5 @@
 {
-    "target_list": [
-        "bottle"
-    ],
+    "target_list": [],
     "list_mode": "unordered",
     "grasped_objects": [
         "cup",
@@ -13,7 +11,7 @@
         "bottom": 65,
         "right": 35,
         "top": 40,
-        "top_front": 90,
+        "top_front": 75,
         "top_back": 60,
         "belt": 50
     },
@@ -27,12 +25,12 @@
     "command_history": [],
     "world_map": {
         "myright": {
-            "location": "Middle Left, 0.75m",
-            "last_seen": "01:14:50 PM"
+            "location": "Bottom Right, 0.66m",
+            "last_seen": "01:56:40 PM"
         },
         "myleft": {
-            "location": "Bottom Center, 0.44m",
-            "last_seen": "01:14:31 PM"
+            "location": "Middle Center, 0.50m",
+            "last_seen": "01:56:40 PM"
         },
         "potted plant": {
             "location": "Bottom Right, 1.00m",
@@ -47,8 +45,8 @@
             "last_seen": "11:02:14 AM"
         },
         "bottle": {
-            "location": "Middle Center, 0.45m",
-            "last_seen": "01:14:50 PM"
+            "location": "Middle Right, 0.96m",
+            "last_seen": "01:56:37 PM"
         },
         "apple": {
             "location": "Middle Left, 0.31m",

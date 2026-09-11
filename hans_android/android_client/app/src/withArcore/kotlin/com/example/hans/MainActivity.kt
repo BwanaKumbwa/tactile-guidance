@@ -549,6 +549,12 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                         if (jsonObj.has("vibration_command")) {
                             val b64Command = jsonObj.getString("vibration_command")
                             val commandBytes = Base64.decode(b64Command, Base64.NO_WRAP)
+                            Log.d(
+                                "HANS",
+                                "📦 Command bytes: ${
+                                    commandBytes.joinToString("") { "%02X".format(it) }
+                                }"
+                            )
 
                             // Clean routing without duplicate parsing blocks
                             val targetDevice = jsonObj.optString("target_device", "all")

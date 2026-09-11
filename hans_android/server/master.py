@@ -162,14 +162,31 @@ def run_experiment_logic(
     else:
         # Hardware bracelet (physical BLE device)
         try:
-            from feedback_device import BraceletAdapter
-            bracelet = BraceletAdapter(intensities, navigation_type=1)
+            from feedback_devices import BraceletAdapter
+            bracelet = BraceletAdapter()
             if bracelet.connect():
                 print('[master] Hardware bracelet connected.')
                 devices.append(bracelet)
             else:
-                print('[master] Bracelet connection failed. Aborting.', file=sys.stderr)
-                sys.exit(1)
+                # Hardware bracelet (physical BLE device)
+                try:
+                    from feedback_devices import BraceletAdapter
+                    bracelet = BraceletAdapter()
+                    if bracelet.connect():
+                        print('[master] Hardware bracelet connected.')
+                        devices.append(bracelet)
+                    else:
+                        print('[master] Bracelet connection failed. Aborting.', file=sys.stderr)
+                        sys.exit(1)
+                except ImportError:
+                    # feedback_device.py not present — fall back to raw BraceletController
+                    from bracelet import connect_belt, BraceletController
+                    ok, belt_ctrl = connect_belt()
+                    if not ok:
+                        print('[master] Belt connection failed. Aborting.', file=sys.stderr)
+                        sys.exit(1)
+                    raw = _VirtualBraceletAdapter(belt_ctrl, intensities, navigation_type=1)
+                    devices.append(raw)
         except ImportError:
             # feedback_device.py not present — fall back to raw BraceletController
             from bracelet import connect_belt, BraceletController

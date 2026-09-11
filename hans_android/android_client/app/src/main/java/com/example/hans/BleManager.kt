@@ -112,6 +112,10 @@ class BleManager(private val context: Context) {
 
     fun writeRawCommand(bytes: ByteArray) {
         if (bytes.isEmpty()) return
+        Log.d(
+            "BLE",
+            "✏️ writeRawCommand: ${bytes.joinToString("") { "%02X".format(it) }}"
+        )
         Log.d("BLE", "[$deviceName] ⬇️ Queuing command. Queue size: ${commandQueue.size}")
 
         enqueueCommand {
@@ -322,6 +326,13 @@ class BleManager(private val context: Context) {
 
         @Deprecated("Deprecated in Java")
         override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
+            Log.d(
+                "BLE",
+                "[$deviceName] 📥 NOTIFICATION ${characteristic.uuid}: ${
+                    characteristic.value.joinToString("") { "%02X".format(it) }
+                }"
+            )
+
             if (characteristic.uuid == KEEP_ALIVE) {
                 enqueueCommand {
                     val char = gatt.getService(SERVICE_UUID)?.getCharacteristic(KEEP_ALIVE)
@@ -360,6 +371,10 @@ class BleManager(private val context: Context) {
     }
 
     fun isConnected(): Boolean {
+        Log.d(
+            "BLE",
+            "[$deviceName] isConnected() = ${connectionState == BluetoothProfile.STATE_CONNECTED}, state=$connectionState"
+        )
         return connectionState == BluetoothProfile.STATE_CONNECTED
     }
 }
