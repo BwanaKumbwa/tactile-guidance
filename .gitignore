@@ -150,5 +150,8 @@ hans_android/server/results/*
 
 # log files
 *log*
+# Keep study trial logger + its unit tests (matched by *log* above)
+!hans_android/server/study_logger.py
+!hans_android/tests/unit/test_study_logger.py
 # Local WIP backup of study logging (do not commit)
 hans_android/_study_logging_wip_backup/

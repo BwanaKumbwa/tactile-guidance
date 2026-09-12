@@ -261,6 +261,7 @@ class BraceletAdapter(FeedbackDevice):
             'is_navigating': self._is_close_target,
             'calibrating': time.time() < self._calibration_until,
             'intensities': dict(self._vib_intensities),
+            'last_cmd_unix': self._last_cmd_time or None,
         }
 
     def _find_bbox(self, detections: list, class_ids: list) -> Optional[list]:

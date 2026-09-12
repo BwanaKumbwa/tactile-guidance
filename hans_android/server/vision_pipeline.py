@@ -244,8 +244,17 @@ class VisionPipeline:
         self._names_hand:  dict  = {}
         self._pt_hand:     bool  = False
         self._cmd_table:   dict  = {}
+        self._study_logger = None  # optional StudyLogger for human-subjects runs
 
     # Public API
+
+    def set_study_logger(self, logger) -> None:
+        """Attach a StudyLogger (or None) for per-frame / event recording."""
+        self._study_logger = logger
+
+    @property
+    def study_logger(self):
+        return self._study_logger
 
     @property
     def display_queue(self) -> queue.Queue:
@@ -558,6 +567,9 @@ class VisionPipeline:
                 depth_img=depth_img,
                 fps=fps,
             ))
+
+            # Study logging (frames + overlay video + sparse events)
+            self._study_on_frame(ann, outputs)
 
             # Memory flush
             self._periodic_memory_save()
@@ -1043,6 +1055,37 @@ class VisionPipeline:
         #            cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 1)
         self._draw_belt_avoidance_overlay(result)
         return result
+
+    def _study_on_frame(self, annotated_bgr: np.ndarray, outputs: list) -> None:
+        """Forward one annotated frame to StudyLogger when a trial is active."""
+        logger = self._study_logger
+        if logger is None or not getattr(logger, 'trial_active', False):
+            return
+        try:
+            from study_logger import build_frame_snapshot
+            belt_st = bracelet_st = None
+            for dev in self._feedback_devices:
+                try:
+                    st = dev.get_status()
+                except Exception:
+                    continue
+                dtype = st.get('type')
+                if dtype == 'belt_distance' and belt_st is None:
+                    belt_st = st
+                elif dtype == 'bracelet' and bracelet_st is None:
+                    bracelet_st = st
+            status = logger.get_status()
+            trial_id = status.get('trial_id') or 0
+            snap = build_frame_snapshot(
+                trial_id=int(trial_id),
+                outputs=outputs or [],
+                target_class_id=self._class_target_obj,
+                belt_status=belt_st,
+                bracelet_status=bracelet_st,
+            )
+            logger.on_frame(annotated_bgr, snap)
+        except Exception as e:
+            print(f'[Pipeline] study log error: {e}')
 
     def _draw_belt_avoidance_overlay(self, im: np.ndarray) -> None:
         """Draw corridor / obstacle / waypoint from BeltAdapter debug state."""

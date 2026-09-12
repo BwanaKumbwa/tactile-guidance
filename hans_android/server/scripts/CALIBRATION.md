@@ -95,3 +95,9 @@ Then continue with **Training to criterion** (excluded from analysis).
 3. Confirm belt steers when far, stops near ~50 cm, bracelet guides the hand  
 
 Optional: static chair mid-path for one avoidance demo (not required for familiarisation).
+
+## Thesis study logging
+
+After familiarisation, capture per-trial CSV / events with the `/study/*` API.
+See `STUDY_LOGGING.md` in this folder. Keep NASA-TLX and end-of-session
+usability / debrief on your paper forms (not logged by the server).

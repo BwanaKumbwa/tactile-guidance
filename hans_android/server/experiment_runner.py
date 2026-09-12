@@ -3,7 +3,6 @@ from __future__ import annotations
 import queue
 import sys
 import time
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -23,6 +22,8 @@ class _Key:
     WRONG_TARGET       = ord('t')
     START_TRIAL        = ord('s')
     SAVE_AND_QUIT      = ord('c')
+    SYNC_MARKER        = ord('k')
+    ABORT_TRIAL        = ord('a')
 
     # Belt motor calibration (MOTOR_INDEX 0..15 probe + navel mark)
     MOTOR_ALL          = ord('0')   # sweep all 16 motor indices
@@ -31,14 +32,29 @@ class _Key:
     MOTOR_REPEAT       = ord('r')   # re-buzz current probe index
     MOTOR_MARK_NAVEL   = ord('m')   # green marker = this motor
     MOTOR_VERIFY       = ord('v')   # front → right → back → left
-    MOTOR_FLIP_DIR     = ord('f')   # flip left/right along the belt
+    # Note: 'f' is SYSTEM_FAILED while a trial is running; flip L/R only when idle
+    MOTOR_FLIP_DIR     = ord('f')
 
     RESULT_KEYS = {
+        ord('y'): 'success',
+        ord('n'): 'fail',
+        ord('f'): 'tech_failure',
+        ord('t'): 'fail',
+        ord('a'): 'abort',
+    }
+
+    LEGACY_RESULT_LABELS = {
         ord('y'): 'SUCCESSFUL',
         ord('n'): 'FAILED',
         ord('f'): 'SYSTEM FAILED',
         ord('t'): 'WRONG TARGET',
+        ord('a'): 'ABORT',
     }
+
+
+VALID_BLOCKS = {
+    'direct', 'lateral', 'dynamic', 'verification', 'training',
+}
 
 
 # ExperimentRunner
@@ -47,9 +63,7 @@ class ExperimentRunner:
     """
     Research-only wrapper around VisionPipeline.
 
-    Manages the experiment trial state machine and writes results to CSV.
-    Has NO knowledge of YOLO, depth estimation, haptic intensities, or
-    MCP commands — those all live in VisionPipeline.
+    Manages the experiment trial state machine, study logging, and legacy CSV.
     """
 
     def __init__(
@@ -61,6 +75,7 @@ class ExperimentRunner:
         target_objs:   Optional[List[str]] = None,
         manual_entry:  bool                = True,
         mock_navigate: bool                = False,
+        study_logger                       = None,
     ):
         self._pipeline      = pipeline
         self._participant   = participant
@@ -69,6 +84,7 @@ class ExperimentRunner:
         self._target_objs   = target_objs or []
         self._manual_entry  = manual_entry
         self._mock_navigate = mock_navigate
+        self._study         = study_logger
 
         # Trial state
         self._trial_running:    bool  = False
@@ -78,7 +94,7 @@ class ExperimentRunner:
         self._trial_end_time          = 'NA'
         self._last_pressed_key: int   = -1
 
-        # Data accumulator
+        # Data accumulator (legacy CSV)
         self._output_data: List[list] = []
 
     # Main entry point (blocking — must be called from the main thread)
@@ -96,13 +112,22 @@ class ExperimentRunner:
                   f'Available COCO classes: {coco_labels}')
         else:
             print(f'[Experiment] Auto mode. Targets: {self._target_objs}')
-        print('[Experiment] Keys: S=start  Y=success  N=fail  F=sys_fail  T=wrong  C=quit')
+        print('[Experiment] Keys: S=start  K=sync  Y=success  N=fail  '
+              'F=tech_fail  T=wrong  A=abort  C=quit')
         print('[Experiment] Belt calib: 0=sweep all motors  ]=next  [=prev  R=repeat')
-        print('[Experiment]             M=mark green-marker as navel  V=verify  F=flip L/R')
+        print('[Experiment]             M=mark green-marker as navel  V=verify  '
+              'F=flip L/R (idle only)')
+        if self._study is not None:
+            print(f'[Experiment] Study log → {self._study.session_dir}')
 
         try:
             self._main_loop()
         finally:
+            if self._study is not None:
+                try:
+                    self._study.close()
+                except Exception:
+                    pass
             self._pipeline.stop()
             self._pipeline.wait()
             cv2.destroyAllWindows()
@@ -127,7 +152,7 @@ class ExperimentRunner:
             im0 = item.annotated_im0
             view = self._pipeline.depth_side_by_side(im0, item.depth_img) \
                 if item.depth_img is not None else im0
-            
+
             cv2.imshow('AIBox & Depth', view)
             cv2.setWindowProperty('AIBox & Depth', cv2.WND_PROP_TOPMOST, 1)
 
@@ -135,6 +160,7 @@ class ExperimentRunner:
             if key != -1:
                 if self._handle_key(key) == 'quit':
                     break
+
     # Key handler
 
     def _handle_key(self, key: int) -> Optional[str]:
@@ -143,6 +169,10 @@ class ExperimentRunner:
         # End running trial
         if key in _Key.RESULT_KEYS and self._trial_running:
             self._end_trial(key)
+
+        # Sync marker during trial
+        elif key == _Key.SYNC_MARKER and self._trial_running:
+            self._mark_sync()
 
         # Start next trial
         elif key == _Key.START_TRIAL and self._ready_for_next:
@@ -160,13 +190,13 @@ class ExperimentRunner:
             self._run_belt_calib(lambda b: b.set_navel_motor())
         elif key == _Key.MOTOR_VERIFY:
             self._run_belt_calib(lambda b: b.test_cardinals())
-        elif key == _Key.MOTOR_FLIP_DIR:
+        elif key == _Key.MOTOR_FLIP_DIR and not self._trial_running:
             self._run_belt_calib(lambda b: b.flip_motor_direction())
 
         # Save data and quit
         elif key == _Key.SAVE_AND_QUIT:
             if self._trial_running:
-                self._append_output_row()
+                self._end_trial(_Key.ABORT_TRIAL)
             self._save_output_data()
             self._pipeline.stop()
             return 'quit'
@@ -187,10 +217,58 @@ class ExperimentRunner:
         # Blocking on purpose — wear the belt and watch the terminal labels
         fn(belt)
 
+    def _prompt_trial_meta(self) -> Optional[dict]:
+        """Ask experimenter for block / approach / distance before S continues."""
+        print('\n[Study] Trial metadata (required for analysis logs)')
+        try:
+            block = input(
+                '  block [direct|lateral|dynamic|verification|training]: '
+            ).strip().lower()
+            if block not in VALID_BLOCKS:
+                print(f'[Study] Invalid block {block!r}.')
+                return None
+            approach = input(
+                '  approach_type [direct|lateral|dynamic] '
+                '(Enter = same as block): '
+            ).strip().lower()
+            if not approach:
+                approach = 'direct' if block in ('verification', 'training') else block
+            if approach not in ('direct', 'lateral', 'dynamic'):
+                print(f'[Study] Invalid approach_type {approach!r}.')
+                return None
+            dist_s = input(
+                '  distance_m [0.5|1|1.5|2|3]: '
+            ).strip()
+            distance_m = float(dist_s)
+            training = block == 'training'
+            include_s = input(
+                f'  include_in_analysis [Y/n] '
+                f'(default={"n" if training else "Y"}): '
+            ).strip().lower()
+            if include_s == '':
+                include = not training
+            else:
+                include = include_s not in ('n', 'no', '0', 'false')
+            return {
+                'block': block,
+                'approach_type': approach,
+                'distance_m': distance_m,
+                'include_in_analysis': include,
+            }
+        except (ValueError, EOFError) as e:
+            print(f'[Study] Meta entry cancelled ({e}).')
+            return None
+
     # Trial state machine
 
     def _start_trial(self) -> None:
-        """Resolve target name, tell the pipeline, start timing."""
+        """Resolve target name, tell the pipeline, start timing + study log."""
+        if self._study is not None:
+            meta = self._prompt_trial_meta()
+            if meta is None:
+                return
+            self._study.set_pending_meta(**meta)
+
         if self._manual_entry:
             # Researcher types target key — blocks intentionally (research use only)
             print(f'Available: {coco_labels}')
@@ -210,6 +288,14 @@ class ExperimentRunner:
                 return
             target_name = self._target_objs[self._obj_index]
 
+        if self._study is not None:
+            try:
+                info = self._study.start_trial()
+                print(f'[Study] t0={info["t0_unix"]:.3f} trial_id={info["trial_id"]}')
+            except Exception as e:
+                print(f'[Study] Could not start trial log: {e}')
+                return
+
         self._pipeline.set_target(target_name)
         self._pipeline.set_vibrate(True)
 
@@ -218,11 +304,28 @@ class ExperimentRunner:
         self._ready_for_next   = False
         print(f'[Experiment] Trial started — target: {target_name}')
 
+    def _mark_sync(self) -> None:
+        if self._study is None:
+            print('[Study] No study logger attached.')
+            return
+        try:
+            info = self._study.mark_sync()
+            print(f'[Study] sync_unix={info["sync_unix"]:.3f}')
+        except Exception as e:
+            print(f'[Study] sync failed: {e}')
+
     def _end_trial(self, key: int) -> None:
         """Record result, advance index, reset pipeline for next trial."""
         self._trial_end_time = time.time()
-        result = _Key.RESULT_KEYS.get(key, '?')
-        print(f'[Experiment] Trial ended — {result}')
+        outcome = _Key.RESULT_KEYS.get(key, 'abort')
+        legacy = _Key.LEGACY_RESULT_LABELS.get(key, '?')
+        print(f'[Experiment] Trial ended — {legacy} ({outcome})')
+
+        if self._study is not None and self._study.trial_active:
+            try:
+                self._study.end_trial(outcome)
+            except Exception as e:
+                print(f'[Study] end_trial failed: {e}')
 
         self._append_output_row()
 
@@ -252,7 +355,8 @@ class ExperimentRunner:
     def _append_output_row(self) -> None:
         """
         Snapshot bracelet_controller stats and reset them for the next trial.
-        Called at trial end or on manual quit.
+        Called at trial end or on manual quit. Legacy path — study logs are
+        the thesis source of truth.
         """
         bc = self._pipeline.bracelet_controller
         if bc is None:
@@ -287,10 +391,10 @@ class ExperimentRunner:
 
     def _save_output_data(self) -> None:
         if not self._output_data:
-            print('[Experiment] No data to save.')
+            print('[Experiment] No legacy CSV rows to save.')
             return
         Path(self._output_path).mkdir(parents=True, exist_ok=True)
         csv_path = (f'{self._output_path}'
                     f'{self._condition}_participant_{self._participant}.csv')
         pd.DataFrame(self._output_data).to_csv(csv_path, index=False)
-        print(f'[Experiment] Data saved → {csv_path}')
+        print(f'[Experiment] Legacy data saved → {csv_path}')

@@ -502,6 +502,7 @@ class BeltAdapter(FeedbackDevice):
             'plan_has_obstacle': self._plan_has_obstacle,
             'plan_obstacle_done': self._plan_obstacle_done,
             'navigation_mode': self._navigation_mode(),
+            'last_cmd_unix': self._last_cmd_time or None,
         }
 
     def get_debug_viz(self) -> dict:

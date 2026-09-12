@@ -113,6 +113,7 @@ def run_experiment_logic(
     feedback_devices = None,
     latest_frame_ref = None,
     deployment_mode: bool = False,   # True → server_main.py, False → standalone
+    study_logger     = None,
 ):
     """
     Build the pipeline from args, wire feedback devices, and run.
@@ -126,6 +127,7 @@ def run_experiment_logic(
     metric_depth = (not args.relative) and torch.cuda.is_available()
     use_ml_depth_fallback = getattr(args, 'depth_fallback', False)
     use_metric_depth      = getattr(args, 'metric_depth', False)
+    save_video = bool(getattr(args, 'save_video', False))
 
     # PipelineConfig (Change 6: FP16 auto-enabled on CUDA)
     cfg = PipelineConfig(
@@ -136,11 +138,24 @@ def run_experiment_logic(
         run_depth              = True,
         use_ml_depth_fallback  = use_ml_depth_fallback,
         metric_depth      = use_metric_depth,
-        nosave            = not args.save_video,
+        nosave            = not save_video,
     )
 
     # Ensure output directory exists
     Path(cfg.output_path).mkdir(parents=True, exist_ok=True)
+
+    # Study logger (thesis CSV / events / optional overlay video)
+    if study_logger is None:
+        from study_logger import StudyLogger
+        study_logger = StudyLogger(
+            participant_id=participant,
+            runner='android' if deployment_mode else 'desktop',
+            notes=getattr(args, 'study_notes', '') or '',
+            save_video=save_video,
+        )
+        print(f'[master] Study session → {study_logger.session_dir}')
+    if shared_state is not None and hasattr(shared_state, 'set_study_logger'):
+        shared_state.set_study_logger(study_logger)
 
     # Calibration
     intensities = _load_calibration(participant)
@@ -194,6 +209,9 @@ def run_experiment_logic(
         participant_vibration_intensities = intensities,
         latest_frame_ref                  = latest_frame_ref or {'img': None},
     )
+    pipeline.set_study_logger(study_logger)
+    if shared_state is not None and hasattr(shared_state, 'set_pipeline'):
+        shared_state.set_pipeline(pipeline)
 
     # Run
     if deployment_mode:
@@ -216,6 +234,7 @@ def run_experiment_logic(
             target_objs   = target_objs,
             manual_entry  = manual_entry,
             mock_navigate = mock_nav,
+            study_logger  = study_logger,
         )
         runner.run()   # blocks until done; pipeline.stop() called inside
 

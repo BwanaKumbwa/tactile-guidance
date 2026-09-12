@@ -13,6 +13,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Optional
 import re
 import base64
 
@@ -125,6 +126,8 @@ class SharedState:
         self._world_map = {}
         self._belt_adapter = None
         self._bracelet_adapter = None
+        self._study_logger = None
+        self._pipeline_ref = None
 
     def set_belt_adapter(self, belt):
         with self._lock:
@@ -141,6 +144,22 @@ class SharedState:
     def get_bracelet_adapter(self):
         with self._lock:
             return self._bracelet_adapter
+
+    def set_study_logger(self, logger):
+        with self._lock:
+            self._study_logger = logger
+
+    def get_study_logger(self):
+        with self._lock:
+            return self._study_logger
+
+    def set_pipeline(self, pipeline):
+        with self._lock:
+            self._pipeline_ref = pipeline
+
+    def get_pipeline(self):
+        with self._lock:
+            return self._pipeline_ref
 
     def set_target(self, target: str):
         with self._lock: self._current_target = target
@@ -198,11 +217,15 @@ openai_tools_global = []
 # Configuration
 class SimArgs:
     def __init__(self):
-        self.participant = 1
+        self.participant = int(os.environ.get('STUDY_PARTICIPANT', '1'))
         self.condition = 'depth_navigation' # grasping, multiple_objects, depth_navigation
         self.relative = False
         self.mock_navigate = False
-        self.save_video = False
+        # Overlay recording: STUDY_SAVE_VIDEO=1 (default on for study runs)
+        self.save_video = os.environ.get('STUDY_SAVE_VIDEO', '1').strip() not in (
+            '0', 'false', 'False', 'no', 'NO',
+        )
+        self.study_notes = os.environ.get('STUDY_NOTES', '')
         self.depth_fallback = DEPTH_FALLBACK
         self.metric_depth  = METRIC_DEPTH 
 
@@ -620,6 +643,117 @@ def bracelet_stop():
         return {"ok": False, "error": "Bracelet adapter not ready yet"}
     br.stop()
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Study / thesis logging API (experimenter laptop)
+# ---------------------------------------------------------------------------
+
+class StudySessionRequest(BaseModel):
+    participant_id: int = 1
+    notes: str = ""
+    save_video: Optional[bool] = None
+
+
+class StudyTrialStartRequest(BaseModel):
+    block: str
+    approach_type: str
+    distance_m: float
+    include_in_analysis: bool = True
+    trial_id: Optional[int] = None
+    timeout_s: float = 15.0
+
+
+class StudyTrialEndRequest(BaseModel):
+    outcome: str  # success | fail | timeout | abort | tech_failure
+
+
+def _require_study_logger():
+    logger = shared_state.get_study_logger()
+    if logger is None:
+        return None, {"ok": False, "error": "Study logger not ready (pipeline still starting?)"}
+    return logger, None
+
+
+@app.post("/study/session/start")
+def study_session_start(req: StudySessionRequest):
+    """
+    Start (or replace) a study session directory for a participant.
+    Usually not needed — a session is created when the AI thread starts —
+    but use this to switch participant mid-server-run.
+    """
+    from study_logger import StudyLogger
+    save_video = req.save_video
+    if save_video is None:
+        save_video = os.environ.get('STUDY_SAVE_VIDEO', '1').strip() not in (
+            '0', 'false', 'False', 'no', 'NO',
+        )
+    old = shared_state.get_study_logger()
+    if old is not None:
+        try:
+            old.close()
+        except Exception:
+            pass
+    logger = StudyLogger(
+        participant_id=req.participant_id,
+        runner='android',
+        notes=req.notes or '',
+        save_video=bool(save_video),
+    )
+    shared_state.set_study_logger(logger)
+    pipe = shared_state.get_pipeline()
+    if pipe is not None:
+        pipe.set_study_logger(logger)
+    return {"ok": True, **logger.get_status()}
+
+
+@app.post("/study/trial/start")
+def study_trial_start(req: StudyTrialStartRequest):
+    logger, err = _require_study_logger()
+    if err:
+        return err
+    try:
+        info = logger.start_trial(
+            block=req.block,
+            approach_type=req.approach_type,
+            distance_m=req.distance_m,
+            include_in_analysis=req.include_in_analysis,
+            trial_id=req.trial_id,
+            timeout_s=req.timeout_s,
+        )
+        return {"ok": True, **info}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/study/sync")
+def study_sync():
+    logger, err = _require_study_logger()
+    if err:
+        return err
+    try:
+        return {"ok": True, **logger.mark_sync()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/study/trial/end")
+def study_trial_end(req: StudyTrialEndRequest):
+    logger, err = _require_study_logger()
+    if err:
+        return err
+    try:
+        return {"ok": True, **logger.end_trial(req.outcome)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/study/status")
+def study_status():
+    logger = shared_state.get_study_logger()
+    if logger is None:
+        return {"ok": False, "error": "Study logger not ready"}
+    return {"ok": True, **logger.get_status()}
 
 
 # Android endpoints
