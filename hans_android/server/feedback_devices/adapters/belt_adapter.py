@@ -183,20 +183,27 @@ class BeltAdapter(FeedbackDevice):
             )
 
         # Brief YOLO dropouts are common when a chair occludes the bottle.
-        # Keep avoidance alive instead of resetting (that caused log flicker).
+        # Keep avoidance alive instead of resetting — but NEVER bypass handoff.
         if target is None:
             self._target_miss_frames += 1
-            if (self._avoidance_active
+            if (self._in_approach
+                    and self._avoidance_active
                     and self._target_miss_frames <= self.TARGET_MISS_TOLERANCE
                     and self._last_target is not None):
                 return self._steer_hold_avoidance(ctx, self._last_target)
+            # Past handoff, or miss lasted too long → belt must stay silent
+            if self._currently_vibrating:
+                self.stop()
+                self._currently_vibrating = False
+            if not self._in_approach:
+                return None
             self._idle_stop()
             return None
 
         self._target_miss_frames = 0
         self._last_target = target
 
-        depth_m = float(target[7]) if len(target) > 7 else -1.0
+        depth_m = self._estimate_target_depth_m(ctx, target)
         depth_cm = depth_m * 100.0 if depth_m > 0 else -1.0
 
         # --- Phase selection with hysteresis ---
@@ -215,7 +222,13 @@ class BeltAdapter(FeedbackDevice):
                         self._currently_vibrating = False
                     return target
         else:
-            # Unknown depth: keep guiding by bearing
+            # Unknown depth: still allow bearing guidance while approaching.
+            # After a completed handoff, do not re-arm the belt on missing depth.
+            if self._signaled_handoff and not self._in_approach:
+                if self._currently_vibrating:
+                    self.stop()
+                    self._currently_vibrating = False
+                return target
             self._in_approach = True
 
         if not self._in_approach:
@@ -545,10 +558,60 @@ class BeltAdapter(FeedbackDevice):
         self._obstacle_depth_m = None
         self._last_obs_cx = None
 
+    def _estimate_target_depth_m(self, ctx: NavigationContext, target) -> float:
+        """
+        Prefer YOLO-attached depth; if missing, sample the depth map at the
+        target centre so handoff still works when detections are flaky.
+        """
+        if target is not None and len(target) > 7:
+            try:
+                d = float(target[7])
+                if d > 0.05:
+                    return d
+            except (TypeError, ValueError):
+                pass
+
+        depth = getattr(ctx, 'depth_img', None)
+        if depth is None or not hasattr(depth, 'shape') or depth.size == 0:
+            return -1.0
+        try:
+            xc = int(float(target[0]))
+            yc = int(float(target[1]))
+        except (TypeError, ValueError, IndexError):
+            return -1.0
+
+        h, w = depth.shape[:2]
+        if not (0 <= xc < w and 0 <= yc < h):
+            return -1.0
+
+        # Small median window around the target centre (ignore zeros / holes)
+        x0 = max(0, xc - 4)
+        x1 = min(w, xc + 5)
+        y0 = max(0, yc - 4)
+        y1 = min(h, yc + 5)
+        patch = np.asarray(depth[y0:y1, x0:x1], dtype=np.float32).reshape(-1)
+        valid = patch[(patch > 0.05) & (patch < 8.0)]
+        if valid.size == 0:
+            return -1.0
+        return float(np.median(valid))
+
     def _steer_hold_avoidance(self, ctx: NavigationContext, target) -> object:
         """Keep Phase-A steering when the target bbox is briefly missing."""
-        depth_m = float(target[7]) if len(target) > 7 else -1.0
+        if not self._in_approach:
+            if self._currently_vibrating:
+                self.stop()
+                self._currently_vibrating = False
+            return target
+
+        depth_m = self._estimate_target_depth_m(ctx, target)
         depth_cm = depth_m * 100.0 if depth_m > 0 else -1.0
+
+        # Critical: YOLO often drops the bottle near the table / chair.
+        # Stale far depth must not keep the belt buzzing past 50 cm.
+        if depth_cm > 0 and depth_cm <= HANDOFF_ENTER_CM:
+            self._enter_handoff()
+            return target
+
         frame_w, frame_h = self._frame_size(ctx)
         x0, x1, y0, y1 = self._corridor_bounds(frame_h, frame_w)
         if self._last_obs_cx is not None and self._obstacle_depth_m:
@@ -595,6 +658,11 @@ class BeltAdapter(FeedbackDevice):
     def _steer_approach_or_avoid(
         self, ctx: NavigationContext, target, depth_m: float, depth_cm: float,
     ) -> object:
+        # Safety net: never continue avoidance / approach buzz inside handoff range
+        if depth_cm > 0 and depth_cm <= HANDOFF_ENTER_CM:
+            self._enter_handoff()
+            return target
+
         frame_w, frame_h = self._frame_size(ctx)
         steer_x = float(target[0])
         phase = 'approach'

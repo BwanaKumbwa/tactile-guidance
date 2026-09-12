@@ -124,6 +124,7 @@ class SharedState:
         self._memory_existed = False
         self._world_map = {}
         self._belt_adapter = None
+        self._bracelet_adapter = None
 
     def set_belt_adapter(self, belt):
         with self._lock:
@@ -132,6 +133,14 @@ class SharedState:
     def get_belt_adapter(self):
         with self._lock:
             return self._belt_adapter
+
+    def set_bracelet_adapter(self, bracelet):
+        with self._lock:
+            self._bracelet_adapter = bracelet
+
+    def get_bracelet_adapter(self):
+        with self._lock:
+            return self._bracelet_adapter
 
     def set_target(self, target: str):
         with self._lock: self._current_target = target
@@ -211,12 +220,16 @@ def run_ai_logic():
     
     # ✅ 2. Pass the specific controllers to their respective adapters
     belt = BeltAdapter(belt_vbc)
-    bracelet = BraceletAdapter(bracelet_vbc, vibration_intensities={'left': 50, 'right': 50})
+    bracelet = BraceletAdapter(
+        bracelet_vbc,
+        vibration_intensities={'left': 50, 'right': 50, 'top': 50, 'bottom': 50},
+    )
     
     belt.connect()
     bracelet.connect()
     shared_state.set_belt_adapter(belt)
-    
+    shared_state.set_bracelet_adapter(bracelet)
+
     feedback_devices = [belt, bracelet]
     
     try:
@@ -536,6 +549,77 @@ def belt_flip_direction():
     if belt is None:
         return {"ok": False, "error": "Belt adapter not ready yet"}
     return belt.flip_motor_direction()
+
+
+# ---------------------------------------------------------------------------
+# Bracelet calibration / familiarisation
+# ---------------------------------------------------------------------------
+
+class BraceletMotorRequest(BaseModel):
+    motor: str = "right"   # left | right | top | bottom
+    intensity: int = 50
+
+
+class BraceletIntensityRequest(BaseModel):
+    motor: str
+    intensity: int
+
+
+class BraceletSaveRequest(BaseModel):
+    participant: int = 1
+
+
+@app.post("/bracelet/test_motor")
+def bracelet_test_motor(req: BraceletMotorRequest):
+    """Vibrate one wrist motor (left/right/top/bottom) for familiarisation."""
+    br = shared_state.get_bracelet_adapter()
+    if br is None:
+        return {"ok": False, "error": "Bracelet adapter not ready yet — wait for AI thread / phone"}
+    return br.test_motor(req.motor, intensity=req.intensity)
+
+
+@app.post("/bracelet/test_all_motors")
+def bracelet_test_all_motors(intensity: int = 50):
+    """Cycle all four bracelet motors."""
+    br = shared_state.get_bracelet_adapter()
+    if br is None:
+        return {"ok": False, "error": "Bracelet adapter not ready yet"}
+    return br.test_all_motors(intensity=intensity)
+
+
+@app.post("/bracelet/set_intensity")
+def bracelet_set_intensity(req: BraceletIntensityRequest):
+    """Set saved intensity for one wrist motor (0–100)."""
+    br = shared_state.get_bracelet_adapter()
+    if br is None:
+        return {"ok": False, "error": "Bracelet adapter not ready yet"}
+    return br.set_motor_intensity(req.motor, req.intensity)
+
+
+@app.get("/bracelet/intensities")
+def bracelet_get_intensities():
+    br = shared_state.get_bracelet_adapter()
+    if br is None:
+        return {"ok": False, "error": "Bracelet adapter not ready yet"}
+    return br.get_intensities()
+
+
+@app.post("/bracelet/save_calibration")
+def bracelet_save_calibration(req: BraceletSaveRequest):
+    """Write results/calibration/calibration_participant_N.json"""
+    br = shared_state.get_bracelet_adapter()
+    if br is None:
+        return {"ok": False, "error": "Bracelet adapter not ready yet"}
+    return br.save_calibration(req.participant)
+
+
+@app.post("/bracelet/stop")
+def bracelet_stop():
+    br = shared_state.get_bracelet_adapter()
+    if br is None:
+        return {"ok": False, "error": "Bracelet adapter not ready yet"}
+    br.stop()
+    return {"ok": True}
 
 
 # Android endpoints

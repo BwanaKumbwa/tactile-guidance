@@ -150,3 +150,5 @@ hans_android/server/results/*
 
 # log files
 *log*
+# Local WIP backup of study logging (do not commit)
+hans_android/_study_logging_wip_backup/
