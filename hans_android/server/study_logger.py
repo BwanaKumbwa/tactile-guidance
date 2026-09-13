@@ -46,9 +46,12 @@ FRAME_FIELDS = [
     'belt_plan_has_obstacle',
     'belt_phase',
     'belt_last_cue',
+    'belt_signaled_handoff',
+    'belt_handoff_unix',
     'bracelet_active',
     'last_belt_cmd_unix',
     'last_bracelet_cmd_unix',
+    'bracelet_zone_enter_unix',
 ]
 
 TRIALS_FIELDS = [
@@ -151,7 +154,10 @@ class StudyLogger:
         self._prev_plan_has_obstacle: Optional[bool] = None
         self._prev_avoidance_active: bool = False
         self._prev_plan_obstacle_done: bool = False
+        self._prev_signaled_handoff: bool = False
+        self._prev_bracelet_active: bool = False
         self._saw_bracelet_cmd: bool = False
+        self._saw_bracelet_zone: bool = False
         self._pending_meta: Optional[Dict[str, Any]] = None
 
         self._write_session_json()
@@ -436,6 +442,7 @@ class StudyLogger:
             for key in (
                 'bottle_detected', 'belt_in_approach', 'belt_avoidance_active',
                 'belt_plan_locked', 'belt_plan_has_obstacle', 'bracelet_active',
+                'belt_signaled_handoff',
             ):
                 val = row.get(key)
                 if val == '' or val is None:
@@ -480,7 +487,10 @@ class StudyLogger:
         self._prev_plan_has_obstacle = None
         self._prev_avoidance_active = False
         self._prev_plan_obstacle_done = False
+        self._prev_signaled_handoff = False
+        self._prev_bracelet_active = False
         self._saw_bracelet_cmd = False
+        self._saw_bracelet_zone = False
 
     def _diff_events_unlocked(self, snap: dict, now: float) -> None:
         cue = snap.get('belt_last_cue') or None
@@ -488,6 +498,18 @@ class StudyLogger:
             if cue in ('nav_start', 'direction_change', 'pre_handoff', 'handoff'):
                 self._emit_event_unlocked(cue, {})
             self._prev_cue = cue
+
+        # Backup: handoff flag rose even if last_cue frame was missed
+        signaled = bool(snap.get('belt_signaled_handoff'))
+        if signaled and not self._prev_signaled_handoff:
+            if cue != 'handoff' and self._prev_cue != 'handoff':
+                self._emit_event_unlocked('handoff', {
+                    'source': 'signaled_handoff',
+                    'handoff_unix': snap.get('belt_handoff_unix'),
+                    'target_depth_m': snap.get('target_depth_m'),
+                })
+                self._prev_cue = 'handoff'
+        self._prev_signaled_handoff = signaled
 
         phase = snap.get('belt_phase') or None
         if phase and phase != self._prev_phase:
@@ -530,11 +552,23 @@ class StudyLogger:
         self._prev_avoidance_active = avoidance
 
         done = bool(snap.get('belt_plan_obstacle_done'))
-        if done and not self._prev_plan_obstacle_done:
+        # Only log clear-resume from plan when avoidance actually ran
+        if (done and not self._prev_plan_obstacle_done
+                and (self._prev_avoidance_active or avoidance
+                     or (self._prev_phase and str(self._prev_phase).startswith('avoid')))):
             self._emit_event_unlocked('avoidance_clear_resume', {
                 'source': 'plan_obstacle_done',
             })
         self._prev_plan_obstacle_done = done
+
+        br_active = bool(snap.get('bracelet_active'))
+        if br_active and not self._prev_bracelet_active and not self._saw_bracelet_zone:
+            self._saw_bracelet_zone = True
+            self._emit_event_unlocked('bracelet_zone_enter', {
+                'bracelet_zone_enter_unix': snap.get('bracelet_zone_enter_unix'),
+                'target_depth_m': snap.get('target_depth_m'),
+            })
+        self._prev_bracelet_active = br_active
 
         br_cmd = snap.get('last_bracelet_cmd_unix')
         if br_cmd not in (None, '', 0, 0.0) and not self._saw_bracelet_cmd:
@@ -630,7 +664,10 @@ def build_frame_snapshot(
         'belt_plan_obstacle_done': belt.get('plan_obstacle_done'),
         'belt_phase': viz.get('phase', ''),
         'belt_last_cue': belt.get('last_cue') or '',
+        'belt_signaled_handoff': belt.get('signaled_handoff'),
+        'belt_handoff_unix': belt.get('handoff_unix') or '',
         'bracelet_active': bracelet.get('is_navigating') or bracelet.get('vibrating'),
         'last_belt_cmd_unix': belt.get('last_cmd_unix', ''),
         'last_bracelet_cmd_unix': bracelet.get('last_cmd_unix', ''),
+        'bracelet_zone_enter_unix': bracelet.get('zone_enter_unix') or '',
     }

@@ -39,6 +39,7 @@ class BraceletAdapter(FeedbackDevice):
         # Throttle trackers
         self._last_angle = None
         self._last_cmd_time = 0.0
+        self._zone_enter_unix: Optional[float] = None
 
         # Grasping & Freezing state
         self._frozen_target = None
@@ -82,10 +83,13 @@ class BraceletAdapter(FeedbackDevice):
             self._frozen_target = None
             if self._is_close_target:
                 self._is_close_target = False
+                self._zone_enter_unix = None
                 self.stop()
             return None
 
         if target_depth_cm > 0 and target_depth_cm <= self.DISTANCE_THRESHOLD_CM:
+            if not self._is_close_target:
+                self._zone_enter_unix = time.time()
             self._is_close_target = True
 
             if hand_bbox is not None:
@@ -111,6 +115,7 @@ class BraceletAdapter(FeedbackDevice):
                 if is_center_inside or (is_touched and is_close_enough):
                     self._frozen_target = None
                     self._is_close_target = False
+                    self._zone_enter_unix = None
                     self.stop()
                     self.signal_event('grasped')
                     self._grasp_cooldown_end = time.time() + 2.0
@@ -144,6 +149,7 @@ class BraceletAdapter(FeedbackDevice):
             self._frozen_target = None
             if self._is_close_target:
                 self._is_close_target = False
+                self._zone_enter_unix = None
                 self.stop()
             return viz_target
 
@@ -262,6 +268,7 @@ class BraceletAdapter(FeedbackDevice):
             'calibrating': time.time() < self._calibration_until,
             'intensities': dict(self._vib_intensities),
             'last_cmd_unix': self._last_cmd_time or None,
+            'zone_enter_unix': self._zone_enter_unix,
         }
 
     def _find_bbox(self, detections: list, class_ids: list) -> Optional[list]:

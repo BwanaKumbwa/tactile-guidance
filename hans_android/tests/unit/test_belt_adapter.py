@@ -533,3 +533,39 @@ class TestBeltPlanFreeze:
             belt.update(_ctx([]))  # sustained target loss → idle / unlock
         assert belt.get_status()['plan_locked'] is False
         assert belt.get_status()['avoid_side'] is None
+
+
+class TestHandoffLoggingGaps:
+    def test_yolo_miss_near_table_emits_handoff(self, tmp_path, monkeypatch):
+        belt = _uncalibrated_belt(tmp_path, monkeypatch)
+        belt.update(_ctx([_det(320, 240, 2.5)]))
+        belt._cue_hold_until = 0.0
+        belt.update(_ctx([_det(320, 240, 0.60)]))  # inside 70 cm exit band
+        assert belt.get_status()['in_approach'] is True
+        belt._cue_hold_until = 0.0
+        fake = belt._virtual_belt
+        fake.pulses.clear()
+
+        # Sustained miss should hand off, not wipe cues via idle_stop
+        for _ in range(BeltAdapter.TARGET_MISS_TOLERANCE + 1):
+            belt.update(_ctx([]))
+
+        st = belt.get_status()
+        assert st['in_approach'] is False
+        assert st['signaled_handoff'] is True
+        assert st['last_cue'] == 'handoff'
+        assert st['handoff_unix'] is not None
+
+    def test_hysteresis_band_without_prior_handoff_stamps_cue(self, tmp_path, monkeypatch):
+        belt = _uncalibrated_belt(tmp_path, monkeypatch)
+        belt.update(_ctx([_det(320, 240, 2.5)]))
+        belt._cue_hold_until = 0.0
+        # Force the bad state from the pilot trial: out of approach, no handoff yet
+        belt._in_approach = False
+        belt._signaled_handoff = False
+        belt._last_cue = None
+        mid = (HANDOFF_ENTER_CM + HANDOFF_EXIT_CM) / 2 / 100.0
+        belt.update(_ctx([_det(320, 240, mid)]))
+        st = belt.get_status()
+        assert st['signaled_handoff'] is True
+        assert st['last_cue'] == 'handoff'

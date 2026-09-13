@@ -116,6 +116,8 @@ class BeltAdapter(FeedbackDevice):
         self._last_angle: Optional[float] = None
         self._last_intensity: Optional[int] = None
         self._signaled_handoff = False
+        self._last_depth_cm: float = -1.0
+        self._handoff_unix: Optional[float] = None
 
         # While > now, navigation / cues must not overwrite calibration vibrations
         self._calibration_until = 0.0
@@ -197,6 +199,14 @@ class BeltAdapter(FeedbackDevice):
                 self._currently_vibrating = False
             if not self._in_approach:
                 return None
+            # Near the table YOLO often drops the bottle. If the last known
+            # depth was already inside the hysteresis / handoff band, treat
+            # this as handoff instead of a full idle reset (which wiped the
+            # handoff cue and could leave belt+bracelet in an unlogged state).
+            if (self._last_depth_cm > 0
+                    and self._last_depth_cm <= HANDOFF_EXIT_CM):
+                self._enter_handoff()
+                return None
             self._idle_stop()
             return None
 
@@ -205,6 +215,8 @@ class BeltAdapter(FeedbackDevice):
 
         depth_m = self._estimate_target_depth_m(ctx, target)
         depth_cm = depth_m * 100.0 if depth_m > 0 else -1.0
+        if depth_cm > 0:
+            self._last_depth_cm = depth_cm
 
         # --- Phase selection with hysteresis ---
         if depth_cm > 0:
@@ -216,7 +228,12 @@ class BeltAdapter(FeedbackDevice):
                 if depth_cm >= HANDOFF_EXIT_CM:
                     self._in_approach = True
                     self._signaled_handoff = False
+                    self._handoff_unix = None
                 else:
+                    # Inside the 50–70 cm band without a recorded handoff
+                    # (e.g. idle_stop from a YOLO miss) — still emit handoff.
+                    if not self._signaled_handoff:
+                        self._enter_handoff()
                     if self._currently_vibrating:
                         self.stop()
                         self._currently_vibrating = False
@@ -315,8 +332,9 @@ class BeltAdapter(FeedbackDevice):
                 series_period=1000,
                 series_iterations=1,
             )
-            if event == 'handoff':
-                self._arm_cue_hold(event)
+        # Always stamp the cue for logging, even if BLE pulse failed.
+        if event == 'handoff':
+            self._arm_cue_hold(event)
 
     # ------------------------------------------------------------------
     # Motor calibration via MOTOR_INDEX (one physical motor at a time)
@@ -503,6 +521,9 @@ class BeltAdapter(FeedbackDevice):
             'plan_obstacle_done': self._plan_obstacle_done,
             'navigation_mode': self._navigation_mode(),
             'last_cmd_unix': self._last_cmd_time or None,
+            'signaled_handoff': self._signaled_handoff,
+            'handoff_unix': self._handoff_unix,
+            'last_depth_cm': self._last_depth_cm if self._last_depth_cm > 0 else None,
         }
 
     def get_debug_viz(self) -> dict:
@@ -521,6 +542,7 @@ class BeltAdapter(FeedbackDevice):
             self.stop()
         self._signaled_pre_handoff = True
         if not self._signaled_handoff:
+            self._handoff_unix = time.time()
             self.signal_event('handoff')
             self._signaled_handoff = True
 
@@ -529,6 +551,7 @@ class BeltAdapter(FeedbackDevice):
             self.stop()
         self._in_approach = False
         self._signaled_handoff = False
+        self._handoff_unix = None
         self._target_miss_frames = 0
         self._last_target = None
         self._reset_avoidance('target lost')

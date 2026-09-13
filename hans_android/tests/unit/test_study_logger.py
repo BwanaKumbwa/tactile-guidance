@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import csv
 import json
+import time
 
 import numpy as np
 import pytest
@@ -207,3 +208,52 @@ def test_build_frame_snapshot_empty():
     snap = build_frame_snapshot(1, [], -1, None, None)
     assert snap['bottle_detected'] is False
     assert snap['target_depth_m'] == ''
+
+
+def test_handoff_from_signaled_flag_without_cue(logger):
+    logger.start_trial(block='direct', approach_type='direct', distance_m=2.0)
+    snap = build_frame_snapshot(
+        trial_id=1,
+        outputs=[[320, 240, 40, 60, -1, 39, 0.9, 0.55]],
+        target_class_id=39,
+        belt_status={
+            'in_approach': False,
+            'navigation_mode': 'locking',
+            'avoidance_active': False,
+            'plan_locked': False,
+            'plan_has_obstacle': False,
+            'plan_obstacle_done': False,
+            'last_cue': '',
+            'signaled_handoff': True,
+            'handoff_unix': 123.4,
+            'debug_viz': {'phase': ''},
+        },
+        bracelet_status={
+            'is_navigating': True,
+            'last_cmd_unix': None,
+            'zone_enter_unix': 123.5,
+        },
+    )
+    logger.on_frame(None, snap)
+    # second frame with an actual bracelet command (must be >= t0)
+    snap2 = dict(snap)
+    snap2['last_bracelet_cmd_unix'] = time.time()
+    logger.on_frame(None, snap2)
+    logger.end_trial('success')
+
+    events = [
+        json.loads(line)
+        for line in (logger.session_dir / 'trial_001' / 'events.jsonl')
+        .read_text().splitlines()
+        if line.strip()
+    ]
+    names = [e['event'] for e in events]
+    assert 'handoff' in names
+    assert 'bracelet_zone_enter' in names
+    assert 'bracelet_first_cmd' in names
+
+    with open(logger.session_dir / 'trial_001' / 'frames.csv', newline='', encoding='utf-8') as f:
+        rows = list(csv.DictReader(f))
+    assert 'belt_signaled_handoff' in rows[0]
+    assert 'bracelet_zone_enter_unix' in rows[0]
+    assert int(rows[0]['belt_signaled_handoff']) == 1
