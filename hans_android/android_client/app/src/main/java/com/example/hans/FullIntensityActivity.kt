@@ -9,6 +9,16 @@ import android.widget.LinearLayout
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import android.widget.ProgressBar
+import android.util.Log
+import org.json.JSONObject
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.IOException
 
 class FullIntensityActivity : AppCompatActivity() {
 
@@ -103,6 +113,7 @@ class FullIntensityActivity : AppCompatActivity() {
             saveIntensity("topBackIntensity", getValue("topBack"))
             saveIntensity("beltIntensity", getValue("belt"))
 
+            syncPreferencesToServer()
             finish()
         }
     }
@@ -182,6 +193,57 @@ class FullIntensityActivity : AppCompatActivity() {
         prefs.edit()
             .putInt(key, value)
             .apply()
+    }
+
+    private fun syncPreferencesToServer() {
+        val serverIp = BuildConfig.SERVER_IP
+        val url = "http://$serverIp:8000/api/preferences"
+
+        val json = JSONObject().apply {
+            put("text", "")
+            put("bracelet_connected", true)
+            put("belt_connected", true)
+
+            put("vibration", JSONObject().apply {
+                put("left", getValue("left"))
+                put("bottom", getValue("down"))
+                put("right", getValue("right"))
+                put("top", getValue("top"))
+                put("top_front", getValue("topFront"))
+                put("top_back", getValue("topBack"))
+                put("belt", getValue("belt"))
+            })
+
+            val prefs = getSharedPreferences("PatternPrefs", MODE_PRIVATE)
+            put("pattern", prefs.getString("PATTERN_CODE", "VIB_PATTERN_SINGLE"))
+        }
+
+        val body = json.toString()
+            .toRequestBody("application/json; charset=utf-8".toMediaType())
+
+        val request = Request.Builder()
+            .url(url)
+            .post(body)
+            .build()
+
+        OkHttpClient().newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                Log.e("FullIntensity", "Failed to sync preferences", e)
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                response.close()
+
+                if (response.isSuccessful) {
+                    Log.d("FullIntensity", "Preferences synced successfully")
+                } else {
+                    Log.e(
+                        "FullIntensity",
+                        "Preference sync failed: HTTP ${response.code}"
+                    )
+                }
+            }
+        })
     }
 
 }

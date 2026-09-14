@@ -14,7 +14,7 @@ from feedback_devices.adapters.bracelet_protocol import (
     send_command,
 )
 
-from pybracelet import PATTERN_SINGLE, MODE_APPLICATION
+from pybracelet import (VIB_PATTERN_SINGLE, VIB_PATTERN_MULTI, VIB_PATTERN_SEQ, MODE_APPLICATION)
 
 class BraceletAdapter(FeedbackDevice):
     DISTANCE_THRESHOLD_CM = 70.0
@@ -48,6 +48,9 @@ class BraceletAdapter(FeedbackDevice):
         # Grasping & Freezing state
         self._frozen_target = None
         self._grasp_cooldown_end = 0.0
+
+        # Vibration Pattern
+        self._navigation_pattern = VIB_PATTERN_SINGLE
 
     # ============================================================
     # CONNECTION
@@ -515,17 +518,27 @@ class BraceletAdapter(FeedbackDevice):
                 mode_ok = send_command(self._virtual_belt.result_queue, "bracelet", mode)
                 
                 intensities = build_set_intensity_command([
-                    50, 50, 50, 50, 50, 50
+                    self._vib_intensities.get('left', 50),
+                    self._vib_intensities.get('bottom', 50),
+                    self._vib_intensities.get('right', 50),
+                    self._vib_intensities.get('top', 50),
+                    self._vib_intensities.get('top_front', 50),
+                    self._vib_intensities.get('top_back', 50),
                 ])
+
+                print(
+                    f"[BraceletAdapter] Sending navigation pattern: "
+                    f"{self._navigation_pattern}"
+                )
 
                 orientation = build_orientation_command(
                     channel=0,
-                    pattern=PATTERN_SINGLE,
-                    roll=int(bracelet_roll),
+                    pattern=self._navigation_pattern,
+                    roll=int((bracelet_roll + 180) % 360),
                     on_duration=300,
                     period=600,
-                    delay=0,
-                    reset=True,
+                    delay=300,
+                    reset=False,
                 )
 
                 intensity_ok = send_command(
@@ -563,12 +576,12 @@ class BraceletAdapter(FeedbackDevice):
 
             future = asyncio.run_coroutine_threadsafe(
                 self._controller.set_intensity([
-                    50,
-                    50,
-                    50,
-                    50,
-                    50,
-                    50,
+                    self._vib_intensities.get('left', 50),
+                    self._vib_intensities.get('bottom', 50),
+                    self._vib_intensities.get('right', 50),
+                    self._vib_intensities.get('top', 50),
+                    self._vib_intensities.get('top_front', 50),
+                    self._vib_intensities.get('top_back', 50),
                 ]),
                 self._loop,
             )
@@ -603,3 +616,32 @@ class BraceletAdapter(FeedbackDevice):
                 f"Navigation vibration error: {e}"
             )
 
+    def set_vibration_intensities(self, intensities: dict) -> None:
+        self._vib_intensities = {
+            'left': int(intensities.get('left', 50)),
+            'bottom': int(intensities.get('bottom', 50)),
+            'right': int(intensities.get('right', 50)),
+            'top': int(intensities.get('top', 50)),
+            'top_front': int(intensities.get('top_front', 50)),
+            'top_back': int(intensities.get('top_back', 50)),
+        }
+
+        print(
+            "[BraceletAdapter] "
+            f"Vibration intensities updated: {self._vib_intensities}"
+        )
+
+    def set_navigation_pattern(self, pattern: int) -> None: 
+        if pattern not in ( 
+            VIB_PATTERN_SINGLE, 
+            VIB_PATTERN_MULTI, 
+            VIB_PATTERN_SEQ, 
+        ): 
+            raise ValueError("Invalid bracelet navigation pattern") 
+        
+        self._navigation_pattern = pattern 
+        
+        print( 
+            "[BraceletAdapter] " 
+            f"Navigation pattern set to {pattern}" 
+        )

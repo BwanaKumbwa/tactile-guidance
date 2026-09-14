@@ -1,10 +1,6 @@
 import base64
 
-from pybracelet import (
-    PATTERN_SINGLE,
-    PATTERN_MULTI,
-    PATTERN_SEQUENTIAL,
-)
+from pybracelet import (VIB_PATTERN_SINGLE, VIB_PATTERN_MULTI, VIB_PATTERN_SEQ)
 
 
 def build_orientation_command(

@@ -32,7 +32,7 @@ from query_processing import HANSBrain
 from mcp.client.stdio import stdio_client
 from mcp import ClientSession
 from mcp_config import get_server_parameters, convert_mcp_to_openai_tools
-
+from pybracelet import VIB_PATTERN_SINGLE, VIB_PATTERN_MULTI, VIB_PATTERN_SEQ
 import argparse
 import sys
 
@@ -177,6 +177,9 @@ brain = HANSBrain()
 mcp_session_global = None
 openai_tools_global = []
 
+# Runtime bracelet controller
+bracelet_controller = None
+
 # Configuration
 class SimArgs:
     def __init__(self):
@@ -189,6 +192,8 @@ class SimArgs:
         self.metric_depth  = METRIC_DEPTH 
 
 def run_ai_logic():
+    global bracelet_controller
+
     print("🧠 AI Vision Thread Started")
     android_loader = AndroidSource(frame_queue, img_size=640)
     args = SimArgs()
@@ -203,7 +208,8 @@ def run_ai_logic():
     # ✅ 2. Pass the specific controllers to their respective adapters
     belt = BeltAdapter(belt_vbc)
     bracelet = BraceletAdapter(bracelet_vbc, vibration_intensities={'left': 50, 'right': 50})
-    
+    bracelet_controller = bracelet
+
     belt.connect()
     bracelet.connect()
     
@@ -629,6 +635,43 @@ def update_memory_calibration_preferences(new_intensity, pattern):
 
     except Exception as e:
         print(f"Failed updating memory calibration: {e}")
+
+@app.post("/api/preferences")
+async def update_preferences(req: CommandRequest):
+    shared_state.set_hardware_status(
+        req.bracelet_connected,
+        req.belt_connected
+    )
+
+    new_intensity = {
+        "left": req.vibration.left or 50,
+        "bottom": req.vibration.bottom or 50,
+        "right": req.vibration.right or 50,
+        "top": req.vibration.top or 50,
+        "top_front": req.vibration.top_front or 50,
+        "top_back": req.vibration.top_back or 50,
+        "belt": req.vibration.belt or 50,
+    }
+
+    update_memory_calibration_preferences(new_intensity, req.pattern)
+
+    pattern_map = {
+        "VIB_PATTERN_SINGLE": VIB_PATTERN_SINGLE,
+        "VIB_PATTERN_MULTI": VIB_PATTERN_MULTI,
+        "VIB_PATTERN_SEQ": VIB_PATTERN_SEQ,
+    }
+
+    selected_pattern = pattern_map.get(req.pattern)
+
+    if bracelet_controller is not None:
+        bracelet_controller.set_vibration_intensities(new_intensity)
+        print("[API] Bracelet intensity updated")
+
+    if selected_pattern is not None and bracelet_controller is not None:
+        bracelet_controller.set_navigation_pattern(selected_pattern)
+        print(f"[API] Bracelet pattern updated to: {req.pattern}")
+
+    return {"status": "ok"}
 
 @app.post("/api/command")
 async def process_command(req: CommandRequest):

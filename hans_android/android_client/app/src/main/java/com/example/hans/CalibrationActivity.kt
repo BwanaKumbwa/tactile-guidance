@@ -9,6 +9,7 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.progressindicator.CircularProgressIndicator
+import android.util.Log
 
 class CalibrationActivity : AppCompatActivity() {
 
@@ -22,10 +23,13 @@ class CalibrationActivity : AppCompatActivity() {
     private lateinit var titleText: TextView
     private lateinit var selectButton: Button
     private lateinit var circularProgress: CircularProgressIndicator
+    private lateinit var braceletManager: BleManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_calibration)
+
+        braceletManager = BleManagerSingleton.getBraceletManager(this)
 
         // Use the volume button
         setVolumeControlStream(AudioManager.STREAM_MUSIC)
@@ -99,12 +103,14 @@ class CalibrationActivity : AppCompatActivity() {
             KeyEvent.KEYCODE_VOLUME_UP -> {
                 value = (value + 5).coerceAtMost(100)
                 updateUI()
+                previewVibration()
                 return true
             }
 
             KeyEvent.KEYCODE_VOLUME_DOWN -> {
                 value = (value - 5).coerceAtLeast(5)
                 updateUI()
+                previewVibration()
                 return true
             }
         }
@@ -124,5 +130,32 @@ class CalibrationActivity : AppCompatActivity() {
         prefs.edit()
             .putInt(direction, value)
             .apply()
+    }
+
+    private fun previewVibration() {
+        val motor = when (direction) {
+            "left" -> 0x00
+            "down" -> 0x01
+            "right" -> 0x02
+            "top" -> 0x03
+            "topFront" -> 0x04
+            "topBack" -> 0x05
+            else -> return
+        }
+
+        val duration = 500
+
+        val command = byteArrayOf(
+            0x0C.toByte(),
+            0x04.toByte(),
+            motor.toByte(),
+            value.toByte(),
+            ((duration shr 8) and 0xFF).toByte(),
+            (duration and 0xFF).toByte()
+        )
+
+        if (braceletManager.isConnected()) {
+            braceletManager.writeRawCommand(command)
+        }
     }
 }

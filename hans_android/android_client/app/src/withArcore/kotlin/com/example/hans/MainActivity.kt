@@ -126,6 +126,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
             when (item.itemId) {
 
                 R.id.menu_home -> {
+                    stopBraceletVibration()
                     startActivity(Intent(this, BluetoothActivity::class.java))
                     finish()
                     true
@@ -134,6 +135,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                 R.id.menu_camera -> true
 
                 R.id.menu_setting -> {
+                    stopBraceletVibration()
                     startActivity(Intent(this, SettingsActivity::class.java))
                     finish()
                     true
@@ -562,7 +564,13 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
 
                             when (targetDevice) {
                                 "belt" -> beltManager.writeRawCommand(commandBytes)
-                                "bracelet" -> braceletManager.writeRawCommand(commandBytes)
+                                "bracelet" -> {
+                                    braceletManager.writeRawCommand(commandBytes)
+                                    Log.d(
+                                        "HANS",
+                                        "📤 Bracelet command sent: ${commandBytes.joinToString("") { "%02X".format(it) }}"
+                                    )
+                                }
                                 else -> {
                                     beltManager.writeRawCommand(commandBytes)
                                     braceletManager.writeRawCommand(commandBytes)
@@ -777,6 +785,24 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
         }
     }
 
+    // Stop the bracelet vibration
+    private fun stopBraceletVibration() {
+        try {
+            val stopCommand = byteArrayOf(
+                0x03.toByte(),
+                0x01.toByte(),
+                0xFF.toByte()
+            )
+
+            if (braceletManager.isConnected()) {
+                braceletManager.writeRawCommand(stopCommand)
+                Log.d("HANS", "🛑 Bracelet vibration stopped")
+            }
+        } catch (e: Exception) {
+            Log.e("HANS", "Failed to stop bracelet vibration", e)
+        }
+    }
+
     // =================================================================
     // BACKEND COMMUNICATION
     // =================================================================
@@ -898,10 +924,14 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
         return vibration
     }
 
-    private fun loadPattern(): String{
+    private fun loadPattern(): String {
         val prefs = getSharedPreferences(Pattern_Prefs, MODE_PRIVATE)
+        val pattern = prefs.getString("PATTERN_CODE", "VIB_PATTERN_SINGLE")
+            ?: "VIB_PATTERN_SINGLE"
 
-        return prefs.getString("PATTERN_CODE","VIB_PATTERN_SINGLE") ?: "VIB_PATTERN_SINGLE"
+        Log.d("HANS", "🔍 loadPattern(): $pattern")
+
+        return pattern
     }
 
     override fun onDestroy() {
@@ -909,7 +939,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
         ArCoreManager.destroy()
         webSocket?.close(1000, "App closed")
         // Disconnect all BLE devices when app closes
-        BleManagerSingleton.disconnectAll()
+        //BleManagerSingleton.disconnectAll()
         try { speechRecognizer.destroy() } catch (e: Exception) {}
         if (::tts.isInitialized) { tts.stop(); tts.shutdown() }
     }

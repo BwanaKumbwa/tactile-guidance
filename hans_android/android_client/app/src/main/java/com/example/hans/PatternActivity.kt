@@ -7,6 +7,17 @@ import android.widget.Button
 
 import androidx.appcompat.app.AppCompatActivity
 import android.widget.RelativeLayout
+import android.util.Log
+import org.json.JSONObject
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.IOException
+
 class PatternActivity : AppCompatActivity() {
 
     private val PATTERN_PREFS = "PatternPrefs"
@@ -14,10 +25,13 @@ class PatternActivity : AppCompatActivity() {
     private lateinit var VIB_PATTERN_SINGLE: RelativeLayout
     private lateinit var VIB_PATTERN_MULTI: RelativeLayout
     private lateinit var VIB_PATTERN_SEQ: RelativeLayout
+    private lateinit var braceletManager: BleManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_pattern)
+
+        braceletManager = BleManagerSingleton.getBraceletManager(this)
 
         VIB_PATTERN_SINGLE = findViewById(R.id.button_single)
         VIB_PATTERN_MULTI = findViewById(R.id.button_multi)
@@ -36,18 +50,21 @@ class PatternActivity : AppCompatActivity() {
         VIB_PATTERN_SINGLE.setOnClickListener {
             selectedIndex = 0
             updateSelection()
+            previewPattern(0x00)
         }
 
         // Multimotor Continuous Pattern
         VIB_PATTERN_MULTI.setOnClickListener {
             selectedIndex = 1
             updateSelection()
+            previewPattern(0x01)
         }
 
         // Multimotor Sequence Pattern
         VIB_PATTERN_SEQ.setOnClickListener {
             selectedIndex = 2
             updateSelection()
+            previewPattern(0x02)
         }
 
         // Save option
@@ -65,6 +82,8 @@ class PatternActivity : AppCompatActivity() {
                 .putString("PATTERN_CODE", patternCode)
                 .apply()
 
+            syncPreferencesToServer(patternCode)
+            stopPatternPreview()
             finish()
         }
 
@@ -76,18 +95,21 @@ class PatternActivity : AppCompatActivity() {
             when (item.itemId) {
 
                 R.id.menu_home -> {
+                    stopPatternPreview()
                     startActivity(Intent(this, BluetoothActivity::class.java))
                     finish()
                     true
                 }
 
                 R.id.menu_camera -> {
+                    stopPatternPreview()
                     startActivity(Intent(this, MainActivity::class.java))
                     finish()
                     true
                 }
 
                 R.id.menu_setting -> {
+                    stopPatternPreview()
                     startActivity(Intent(this, SettingsActivity::class.java))
                     finish()
                     true
@@ -96,6 +118,118 @@ class PatternActivity : AppCompatActivity() {
                 else -> false
             }
         }
+    }
+
+    private fun syncPreferencesToServer(patternCode: String) {
+        val serverIp = BuildConfig.SERVER_IP
+        val url = "http://$serverIp:8000/api/preferences"
+
+        val intensityPrefs = getSharedPreferences("FullIntensityPrefs", MODE_PRIVATE)
+
+        val json = JSONObject().apply {
+            put("text", "")
+            put("bracelet_connected", true)
+            put("belt_connected", true)
+
+            put("vibration", JSONObject().apply {
+                put("left", intensityPrefs.getInt("leftIntensity", 50))
+                put("bottom", intensityPrefs.getInt("bottomIntensity", 50))
+                put("right", intensityPrefs.getInt("rightIntensity", 50))
+                put("top", intensityPrefs.getInt("topIntensity", 50))
+                put("top_front", intensityPrefs.getInt("topFrontIntensity", 50))
+                put("top_back", intensityPrefs.getInt("topBackIntensity", 50))
+                put("belt", intensityPrefs.getInt("beltIntensity", 50))
+            })
+
+            put("pattern", patternCode)
+        }
+
+        val body = json.toString()
+            .toRequestBody("application/json; charset=utf-8".toMediaType())
+
+        val request = Request.Builder()
+            .url(url)
+            .post(body)
+            .build()
+
+        OkHttpClient().newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                Log.e("PatternActivity", "Failed to sync preferences", e)
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                response.close()
+
+                if (response.isSuccessful) {
+                    Log.d("PatternActivity", "Pattern synced successfully")
+                } else {
+                    Log.e(
+                        "PatternActivity",
+                        "Pattern sync failed: HTTP ${response.code}"
+                    )
+                }
+            }
+        })
+    }
+
+    private fun previewPattern(pattern: Int) {
+        stopPatternPreview()
+
+        android.os.Handler(mainLooper).postDelayed({
+            val intensityPrefs =
+                getSharedPreferences("FullIntensityPrefs", MODE_PRIVATE)
+
+            val left = intensityPrefs.getInt("leftIntensity", 50)
+            val down = intensityPrefs.getInt("bottomIntensity", 50)
+            val right = intensityPrefs.getInt("rightIntensity", 50)
+            val top = intensityPrefs.getInt("topIntensity", 50)
+            val topFront = intensityPrefs.getInt("topFrontIntensity", 50)
+            val topBack = intensityPrefs.getInt("topBackIntensity", 50)
+
+            val command = byteArrayOf(
+                0x0D.toByte(),
+                0x07.toByte(),
+                pattern.toByte(),
+                left.toByte(),
+                down.toByte(),
+                right.toByte(),
+                top.toByte(),
+                topFront.toByte(),
+                topBack.toByte()
+            )
+
+            if (braceletManager.isConnected()) {
+                braceletManager.writeRawCommand(command)
+
+                Log.d(
+                    "PatternActivity",
+                    "Pattern preview sent: " +
+                            command.joinToString("") { "%02X".format(it) }
+                )
+            }
+        }, 200)
+    }
+
+    private fun stopPatternPreview() {
+        val stopCommand = byteArrayOf(
+            0x03.toByte(),
+            0x01.toByte(),
+            0xFF.toByte()
+        )
+
+        if (braceletManager.isConnected()) {
+            braceletManager.writeRawCommand(stopCommand)
+
+            Log.d(
+                "PatternActivity",
+                "Pattern preview stopped"
+            )
+        }
+    }
+
+    override fun onBackPressed() {
+        stopPatternPreview()
+        super.onBackPressed()
     }
 
     private fun updateSelection() {
