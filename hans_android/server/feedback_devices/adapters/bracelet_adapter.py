@@ -20,8 +20,6 @@ class BraceletAdapter(FeedbackDevice):
     DISTANCE_THRESHOLD_CM = 70.0
 
     def __init__(self, virtual_belt_controller=None, vibration_intensities: dict = None):
-        # Tetap menerima parameter ini supaya server_main.py
-        # tidak perlu diubah.
         self._virtual_belt = virtual_belt_controller
 
         self._vib_intensities = vibration_intensities or {
@@ -37,7 +35,7 @@ class BraceletAdapter(FeedbackDevice):
         self._loop = None
         self._thread = None
 
-        # Untuk menunggu hasil koneksi
+        # waiting for connection result
         self._connect_result = False
         self._connect_done = threading.Event()
 
@@ -52,14 +50,10 @@ class BraceletAdapter(FeedbackDevice):
         # Vibration Pattern
         self._navigation_pattern = VIB_PATTERN_SINGLE
 
-    # ============================================================
     # CONNECTION
-    # ============================================================
-
     def connect(self) -> bool:
-        # Jika ada VirtualBeltController, bracelet dikontrol
-        # melalui HP/WebSocket. Jangan mengambil koneksi BLE
-        # dari HP dengan pybracelet.
+        # If there is VirtualBeltColtroller, braceler is controlled through phone or Websocket.
+        # Do not take the BLE connection from phone with the pybracelet.
         if self._virtual_belt is not None:
             self._connected = True
             self._connect_result = True
@@ -71,9 +65,8 @@ class BraceletAdapter(FeedbackDevice):
 
             return True
 
-        # Mode direct BLE:
-        # dipakai jika BraceletAdapter dibuat tanpa
-        # VirtualBeltController.
+        # Direct BLE Mode:
+        # used when BraceletAdapter is made without VirtualBeltController.
         from pybracelet import BraceletController
 
         self._connect_result = False
@@ -326,10 +319,7 @@ class BraceletAdapter(FeedbackDevice):
 
             return viz_target
 
-    # ============================================================
     # EVENTS
-    # ============================================================
-
     def signal_event(self, event: str) -> None:
         if (
             self._controller is None
@@ -383,8 +373,6 @@ class BraceletAdapter(FeedbackDevice):
             )
             future.result(timeout=2.0)
 
-            # Protocol bracelet hanya menerima 3 motor per command.
-            # Jadi motor dibagi menjadi beberapa grup.
             motor_groups = [
                 p['motors'][i:i + 3]
                 for i in range(0, len(p['motors']), 3)
@@ -443,10 +431,7 @@ class BraceletAdapter(FeedbackDevice):
                     f"Stop vibration error: {e}"
                 )
 
-    # ============================================================
     # STATUS
-    # ============================================================
-
     def get_status(self) -> dict:
         return {
             'connected': self._connected,
@@ -455,10 +440,7 @@ class BraceletAdapter(FeedbackDevice):
             'is_navigating': self._is_close_target,
         }
 
-    # ============================================================
     # HELPERS
-    # ============================================================
-
     def _find_bbox(
         self,
         detections: list,
@@ -509,10 +491,8 @@ class BraceletAdapter(FeedbackDevice):
             direction = "LEFT"
 
         try:
-            # ========================================================
             # VIRTUAL MODE:
             # Server -> WebSocket -> HP -> Bracelet
-            # ========================================================
             if self._virtual_belt is not None:
                 mode = build_set_mode_command(MODE_APPLICATION)
                 mode_ok = send_command(self._virtual_belt.result_queue, "bracelet", mode)
@@ -563,10 +543,8 @@ class BraceletAdapter(FeedbackDevice):
 
                 return
 
-            # ========================================================
             # DIRECT BLE MODE:
             # PC -> pybracelet -> Bracelet
-            # ========================================================
             if (
                 self._controller is None
                 or self._loop is None

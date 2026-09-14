@@ -114,7 +114,7 @@ class BleManager(private val context: Context) {
         if (bytes.isEmpty()) return
         Log.d(
             "BLE",
-            "✏️ writeRawCommand: ${bytes.joinToString("") { "%02X".format(it) }}"
+            "writeRawCommand: ${bytes.joinToString("") { "%02X".format(it) }}"
         )
         Log.d("BLE", "[$deviceName] ⬇️ Queuing command. Queue size: ${commandQueue.size}")
 
@@ -328,7 +328,7 @@ class BleManager(private val context: Context) {
         override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
             Log.d(
                 "BLE",
-                "[$deviceName] 📥 NOTIFICATION ${characteristic.uuid}: ${
+                "[$deviceName] NOTIFICATION ${characteristic.uuid}: ${
                     characteristic.value.joinToString("") { "%02X".format(it) }
                 }"
             )

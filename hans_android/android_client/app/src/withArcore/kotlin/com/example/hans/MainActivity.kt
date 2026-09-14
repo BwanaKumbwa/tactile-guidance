@@ -553,7 +553,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                             val commandBytes = Base64.decode(b64Command, Base64.NO_WRAP)
                             Log.d(
                                 "HANS",
-                                "📦 Command bytes: ${
+                                "Command bytes: ${
                                     commandBytes.joinToString("") { "%02X".format(it) }
                                 }"
                             )
@@ -568,7 +568,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                                     braceletManager.writeRawCommand(commandBytes)
                                     Log.d(
                                         "HANS",
-                                        "📤 Bracelet command sent: ${commandBytes.joinToString("") { "%02X".format(it) }}"
+                                        "Bracelet command sent: ${commandBytes.joinToString("") { "%02X".format(it) }}"
                                     )
                                 }
                                 else -> {
@@ -796,7 +796,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
 
             if (braceletManager.isConnected()) {
                 braceletManager.writeRawCommand(stopCommand)
-                Log.d("HANS", "🛑 Bracelet vibration stopped")
+                Log.d("HANS", "Bracelet vibration stopped")
             }
         } catch (e: Exception) {
             Log.e("HANS", "Failed to stop bracelet vibration", e)
