@@ -13,7 +13,7 @@ class SplashActivity : AppCompatActivity() {
         
         // Wait for ARCore warmup (or 2 seconds, whichever is shorter)
         Handler(Looper.getMainLooper()).postDelayed({
-            startActivity(Intent(this, HomescreenActivity::class.java))
+            startActivity(Intent(this, BluetoothActivity::class.java))
             finish()
         }, 2000)  // Adjust timing based on your preference
     }
