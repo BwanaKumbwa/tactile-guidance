@@ -63,6 +63,7 @@
         <activity android:name=".SettingsActivity" />
         <activity android:name=".FullIntensityActivity" />
         <activity android:name=".CalibrationActivity" />
+        <activity android:name=".InformationActivity" />
 
     </application>
 

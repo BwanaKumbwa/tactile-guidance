@@ -12,9 +12,9 @@
         "left": 60,
         "bottom": 60,
         "right": 20,
-        "top": 60,
-        "top_front": 60,
-        "top_back": 60,
+        "top": 65,
+        "top_front": 65,
+        "top_back": 40,
         "belt": 65
     },
     "preferences": {
@@ -27,16 +27,16 @@
     "command_history": [],
     "world_map": {
         "myright": {
-            "location": "Bottom Right, 0.31m",
-            "last_seen": "12:18:26 PM"
+            "location": "Top Center, 0.58m",
+            "last_seen": "12:19:01 PM"
         },
         "myleft": {
-            "location": "Bottom Center, 0.39m",
-            "last_seen": "12:18:25 PM"
+            "location": "Middle Center, unknown depth",
+            "last_seen": "10:22:32 AM"
         },
         "potted plant": {
-            "location": "Bottom Right, 1.00m",
-            "last_seen": "12:07:52 PM"
+            "location": "Top Right, unknown depth",
+            "last_seen": "02:51:58 PM"
         },
         "clock": {
             "location": "Bottom Center, 0.41m",
@@ -47,8 +47,8 @@
             "last_seen": "11:02:14 AM"
         },
         "bottle": {
-            "location": "Middle Right, 0.41m",
-            "last_seen": "12:18:26 PM"
+            "location": "Middle Right, 0.64m",
+            "last_seen": "12:19:01 PM"
         },
         "apple": {
             "location": "Middle Left, 0.31m",

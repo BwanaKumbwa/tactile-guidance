@@ -303,6 +303,11 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
         surfaceView.onPause()
     }
 
+    override fun onStop() {
+        stopBraceletVibration()
+        super.onStop()
+    }
+
     // =================================================================
     // OPENGL RENDERER
     // =================================================================
@@ -935,6 +940,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
     }
 
     override fun onDestroy() {
+        stopBraceletVibration()
         super.onDestroy()
         ArCoreManager.destroy()
         webSocket?.close(1000, "App closed")

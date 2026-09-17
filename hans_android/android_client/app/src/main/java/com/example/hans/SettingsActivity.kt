@@ -58,5 +58,15 @@ class SettingsActivity : AppCompatActivity() {
                 Intent(this, PatternActivity::class.java)
             )
         }
+
+        // Find the button
+        val informationButton = findViewById<RelativeLayout>(R.id.button_information)
+
+        // When clicked → go to PatternActivity
+        informationButton.setOnClickListener {
+            startActivity(
+                Intent(this, InformationActivity::class.java)
+            )
+        }
     }
 }

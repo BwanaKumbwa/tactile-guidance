@@ -9,6 +9,7 @@ from typing import Optional
 from feedback_devices.base import FeedbackDevice, NavigationContext
 from feedback_devices.adapters.bracelet_protocol import (
     build_orientation_command,
+    build_position_command,
     build_set_intensity_command,
     build_set_mode_command,
     send_command,
@@ -58,10 +59,7 @@ class BraceletAdapter(FeedbackDevice):
             self._connected = True
             self._connect_result = True
 
-            print(
-                "[BraceletAdapter] "
-                "Virtual mode: BLE connection handled by phone."
-            )
+            print("[BraceletAdapter] Virtual mode: BLE connection handled by phone.")
 
             return True
 
@@ -85,10 +83,7 @@ class BraceletAdapter(FeedbackDevice):
 
                 self._connected = self._connect_result
 
-                print(
-                    f"[BraceletAdapter] "
-                    f"pybracelet connected: {self._connected}"
-                )
+                print(f"[BraceletAdapter] pybracelet connected: {self._connected}")
 
                 self._connect_done.set()
 
@@ -462,7 +457,7 @@ class BraceletAdapter(FeedbackDevice):
         dx = target_bbox[0] - hand_bbox[0]
         dy = target_bbox[1] - hand_bbox[1]
 
-        return (90 - math.degrees(math.atan2(dy, dx))) % 360
+        return (90 + math.degrees(math.atan2(dy, dx))) % 360
 
     def _send_navigation_command(
         self,
@@ -472,7 +467,7 @@ class BraceletAdapter(FeedbackDevice):
         from pybracelet import (MOTOR_LEFT, MOTOR_DOWN, MOTOR_RIGHT, MOTOR_TOP)
 
         angle = angle_deg % 360
-        bracelet_roll = (180 - angle) % 360
+        bracelet_roll = angle
 
         if 315 <= bracelet_roll or bracelet_roll < 45:
             motor = MOTOR_TOP
@@ -514,7 +509,7 @@ class BraceletAdapter(FeedbackDevice):
                 orientation = build_orientation_command(
                     channel=0,
                     pattern=self._navigation_pattern,
-                    roll=int((bracelet_roll + 180) % 360),
+                    roll=int(bracelet_roll),
                     on_duration=300,
                     period=600,
                     delay=300,

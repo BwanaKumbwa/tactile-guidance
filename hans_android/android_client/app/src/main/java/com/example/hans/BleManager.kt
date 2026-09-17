@@ -34,6 +34,17 @@ class BleManager(private val context: Context) {
     private var deviceName = "Unknown"
     private var currentTimeout: Runnable? = null
 
+    interface InformationListener {
+        fun onBatteryUpdate(chargeState: Int, batteryLevel: Int)
+        fun onFirmwareUpdate(major: Int, minor: Int, protocol: Int)
+    }
+
+    private var informationListener: InformationListener? = null
+
+    fun setInformationListener(listener: InformationListener?) {
+        informationListener = listener
+    }
+
     fun connect(deviceAddress: String) {
         val device = adapter?.getRemoteDevice(deviceAddress)
         if (device == null) {
@@ -153,6 +164,29 @@ class BleManager(private val context: Context) {
                 Log.d("BLE", "[$deviceName] ✓ Write initiated to Bluetooth chip")
             }
         }
+    }
+
+    fun requestBattery() {
+        val command = byteArrayOf(
+            0x0B.toByte(),
+            0x01.toByte(),
+            0x01.toByte()
+        )
+
+        writeRawCommand(command)
+
+        Log.d("BLE", "[$deviceName] Battery request sent")
+    }
+
+    fun requestFirmware() {
+        val command = byteArrayOf(
+            0x06.toByte(),
+            0x00.toByte()
+        )
+
+        writeRawCommand(command)
+
+        Log.d("BLE", "[$deviceName] Firmware request sent")
     }
 
     private fun subscribeTo(uuid: UUID, name: String) {
@@ -304,6 +338,8 @@ class BleManager(private val context: Context) {
                 )
 
                 writeRawCommand(stopBytes)
+                restoreBraceletIntensity()
+                restoreBraceletPattern()
 
             } else {
                 Log.e(
@@ -347,6 +383,151 @@ class BleManager(private val context: Context) {
                     }
                 }
             }
+
+            if (characteristic.uuid == NOTIFY_UUID) {
+
+                val data = characteristic.value
+
+                // Battery notification: 8B 02 [charge_state] [battery_level]
+                if (data.size >= 4 && data[0].toInt() and 0xFF == 0x8B) {
+
+                    val chargeState = data[2].toInt() and 0xFF
+                    val batteryLevel = data[3].toInt() and 0xFF
+
+                    Log.d(
+                        "BLE",
+                        "[$deviceName] Battery: $batteryLevel%, state=$chargeState"
+                    )
+
+                    handler.post {
+                        informationListener?.onBatteryUpdate(
+                            chargeState,
+                            batteryLevel
+                        )
+                    }
+                }
+
+                // Firmware notification: 86 04 [variant] [major] [minor] [protocol]
+                if (data.size >= 6 && data[0].toInt() and 0xFF == 0x86) {
+
+                    val major = data[3].toInt() and 0xFF
+                    val minor = data[4].toInt() and 0xFF
+                    val protocol = data[5].toInt() and 0xFF
+
+                    Log.d(
+                        "BLE",
+                        "[$deviceName] Firmware: $major.$minor"
+                    )
+
+                    handler.post {
+                        informationListener?.onFirmwareUpdate(
+                            major,
+                            minor,
+                            protocol
+                        )
+                    }
+                }
+            }
+
+        }
+    }
+
+    private fun restoreBraceletIntensity() {
+        val prefs = context.getSharedPreferences(
+            "FullIntensityPrefs",
+            Context.MODE_PRIVATE
+        )
+
+        val left = prefs.getInt("left", 50)
+        val down = prefs.getInt("down", 50)
+        val right = prefs.getInt("right", 50)
+        val top = prefs.getInt("top", 50)
+        val topFront = prefs.getInt("topFront", 50)
+        val topBack = prefs.getInt("topBack", 50)
+
+        val command = byteArrayOf(
+            0x02.toByte(),
+            0x06.toByte(),
+            left.toByte(),
+            down.toByte(),
+            right.toByte(),
+            top.toByte(),
+            topFront.toByte(),
+            topBack.toByte()
+        )
+
+        Log.d(
+            "BLE",
+            "[$deviceName] 🔄 Restoring intensity: " +
+                    "L=$left D=$down R=$right T=$top TF=$topFront TB=$topBack"
+        )
+
+        writeRawCommand(command)
+    }
+
+    private fun restoreBraceletPattern() {
+        val prefs = context.getSharedPreferences(
+            "PatternPrefs",
+            Context.MODE_PRIVATE
+        )
+
+        val pattern = prefs.getInt("PATTERN_INDEX", 0)
+
+        val intensityPrefs = context.getSharedPreferences(
+            "FullIntensityPrefs",
+            Context.MODE_PRIVATE
+        )
+
+        val left = intensityPrefs.getInt("left", 50)
+        val down = intensityPrefs.getInt("down", 50)
+        val right = intensityPrefs.getInt("right", 50)
+        val top = intensityPrefs.getInt("top", 50)
+        val topFront = intensityPrefs.getInt("topFront", 50)
+        val topBack = intensityPrefs.getInt("topBack", 50)
+
+        val previewCommand = byteArrayOf(
+            0x0F.toByte(),
+            0x07.toByte(),
+            pattern.toByte(),
+            left.toByte(),
+            down.toByte(),
+            right.toByte(),
+            top.toByte(),
+            topFront.toByte(),
+            topBack.toByte()
+        )
+
+        if (isConnected()) {
+            writeRawCommand(previewCommand)
+
+            Log.d(
+                "BLE",
+                "[$deviceName] Restoring pattern preview: pattern=$pattern"
+            )
+
+            val previewDuration = when (pattern) {
+                0 -> 600L   // SINGLE
+                1 -> 600L   // MULTI
+                2 -> 1200L  // SEQ
+                else -> 600L
+            }
+
+            handler.postDelayed({
+                val stopCommand = byteArrayOf(
+                    0x03.toByte(),
+                    0x01.toByte(),
+                    0xFF.toByte()
+                )
+
+                if (isConnected()) {
+                    writeRawCommand(stopCommand)
+
+                    Log.d(
+                        "BLE",
+                        "[$deviceName] Pattern feedback stopped after 200ms"
+                    )
+                }
+            }, previewDuration)
         }
     }
 

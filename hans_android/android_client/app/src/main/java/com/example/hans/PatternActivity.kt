@@ -187,7 +187,7 @@ class PatternActivity : AppCompatActivity() {
             val topBack = intensityPrefs.getInt("topBackIntensity", 50)
 
             val command = byteArrayOf(
-                0x0D.toByte(),
+                0x0F.toByte(),
                 0x07.toByte(),
                 pattern.toByte(),
                 left.toByte(),

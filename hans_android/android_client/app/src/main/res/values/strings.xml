@@ -23,6 +23,13 @@
     <string name="info_multi">Several motors vibrate together at once.</string>
     <string name="sequence">Multi motor sequence</string>
     <string name="info_sequence">Several motors vibrate one after another in order.</string>
+    <string name="information">Device Information</string>
+    <string name="battery_firmware">View battery and firmware information</string>
+    <string name="battery">Battery Information</string>
+    <string name="firmware">Firmware Information</string>
+    <string name="info_battery_level">Battery Level: --%</string>
+    <string name="info_battery_state">Battery Status: --</string>
+    <string name="info_firmware">Firmware Version: --</string>
     <string name="set_default">Set as a Default</string>
     <string name="bar">_______________________________</string>
     <string name="top">Top</string>

@@ -146,7 +146,7 @@ class CalibrationActivity : AppCompatActivity() {
         val duration = 500
 
         val command = byteArrayOf(
-            0x0C.toByte(),
+            0x0E.toByte(),
             0x04.toByte(),
             motor.toByte(),
             value.toByte(),
