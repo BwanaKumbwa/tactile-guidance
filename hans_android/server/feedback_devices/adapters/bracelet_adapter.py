@@ -38,6 +38,8 @@ class BraceletAdapter(FeedbackDevice):
 
         # Throttle trackers
         self._last_angle = None
+        self._last_intensity: Optional[int] = None
+        self._last_motor: Optional[str] = None
         self._last_cmd_time = 0.0
         self._zone_enter_unix: Optional[float] = None
 
@@ -213,6 +215,10 @@ class BraceletAdapter(FeedbackDevice):
             f'[BraceletCalib] {canon} @ {inten}% '
             f'(ch={channel}, angle={orientation}°) for {hold:.1f}s'
         )
+        self._last_angle = float(orientation)
+        self._last_intensity = inten
+        self._last_motor = canon
+        self._last_cmd_time = time.time()
         time.sleep(hold)
         self.stop()
         return {
@@ -269,6 +275,9 @@ class BraceletAdapter(FeedbackDevice):
             'intensities': dict(self._vib_intensities),
             'last_cmd_unix': self._last_cmd_time or None,
             'zone_enter_unix': self._zone_enter_unix,
+            'last_angle': self._last_angle,
+            'last_intensity': self._last_intensity,
+            'last_motor': self._last_motor,
         }
 
     def _find_bbox(self, detections: list, class_ids: list) -> Optional[list]:
@@ -282,6 +291,22 @@ class BraceletAdapter(FeedbackDevice):
         dy = target_bbox[1] - hand_bbox[1]
         return math.degrees(math.atan2(dy, dx)) % 360
 
+    @staticmethod
+    def _nearest_motor_label(angle_deg: float) -> str:
+        """Map continuous wrist angle to nearest left/right/top/bottom label."""
+        a = float(angle_deg) % 360.0
+        best = 'right'
+        best_diff = 999.0
+        for name in BRACELET_MOTORS:
+            ref = float(_MOTOR_CMD[name]['orientation']) % 360.0
+            diff = abs(a - ref)
+            if diff > 180.0:
+                diff = 360.0 - diff
+            if diff < best_diff:
+                best_diff = diff
+                best = name
+        return best
+
     def _send_navigation_command(self, angle_deg: float) -> None:
         if self._virtual_belt:
             # Use the stronger of left/right as a simple default nav intensity
@@ -294,3 +319,5 @@ class BraceletAdapter(FeedbackDevice):
                 orientation_type=ANGLE,
                 orientation=int(angle_deg),
             )
+            self._last_intensity = inten
+            self._last_motor = self._nearest_motor_label(angle_deg)

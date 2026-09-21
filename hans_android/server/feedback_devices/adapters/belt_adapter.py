@@ -115,6 +115,7 @@ class BeltAdapter(FeedbackDevice):
         self._last_cmd_time = 0.0
         self._last_angle: Optional[float] = None
         self._last_intensity: Optional[int] = None
+        self._last_motor_index: Optional[int] = None
         self._signaled_handoff = False
         self._last_depth_cm: float = -1.0
         self._handoff_unix: Optional[float] = None
@@ -280,6 +281,7 @@ class BeltAdapter(FeedbackDevice):
                     series_period=1000,
                     series_iterations=1,
                 )
+            self._record_vib_cmd(angle=None, intensity=inten, motor_index=navel)
             self._arm_cue_hold(event)
             return
 
@@ -297,6 +299,7 @@ class BeltAdapter(FeedbackDevice):
                     series_period=1000,
                     series_iterations=1,
                 )
+            self._record_vib_cmd(angle=None, intensity=50, motor_index=None)
             self._arm_cue_hold(event, hold_s=self.DIR_CHANGE_HOLD_S)
             return
 
@@ -334,6 +337,8 @@ class BeltAdapter(FeedbackDevice):
             )
         # Always stamp the cue for logging, even if BLE pulse failed.
         if event == 'handoff':
+            inten = p['intensity'] if p else 55
+            self._record_vib_cmd(angle=None, intensity=inten, motor_index=None)
             self._arm_cue_hold(event)
 
     # ------------------------------------------------------------------
@@ -369,7 +374,7 @@ class BeltAdapter(FeedbackDevice):
         if self._virtual_belt:
             self._virtual_belt.stop_vibration()
         self._currently_vibrating = False
-        self._last_angle = None
+        self._record_vib_cmd(angle=None, intensity=inten, motor_index=idx)
         return {
             'ok': True,
             'motor_index': idx,
@@ -496,6 +501,7 @@ class BeltAdapter(FeedbackDevice):
         self._currently_vibrating = False
         self._last_angle = None
         self._last_intensity = None
+        self._last_motor_index = None
 
     def get_status(self) -> dict:
         return {
@@ -524,6 +530,9 @@ class BeltAdapter(FeedbackDevice):
             'signaled_handoff': self._signaled_handoff,
             'handoff_unix': self._handoff_unix,
             'last_depth_cm': self._last_depth_cm if self._last_depth_cm > 0 else None,
+            'last_angle': self._last_angle,
+            'last_intensity': self._last_intensity,
+            'last_motor_index': self._last_motor_index,
         }
 
     def get_debug_viz(self) -> dict:
@@ -1028,10 +1037,23 @@ class BeltAdapter(FeedbackDevice):
             wp = obs_cx + offset_px
         return float(max(0.0, min(float(frame_w - 1), wp)))
 
+    def _record_vib_cmd(
+        self,
+        angle: Optional[float],
+        intensity: Optional[int],
+        motor_index: Optional[int],
+    ) -> None:
+        """Stamp last commanded vibration for study CSV logging."""
+        self._last_angle = angle
+        self._last_intensity = intensity
+        self._last_motor_index = motor_index
+        self._last_cmd_time = time.time()
+
     def _arm_cue_hold(self, name: str, hold_s: Optional[float] = None) -> None:
         self._last_cue = name
         self._cue_hold_until = time.time() + (self.CUE_HOLD_S if hold_s is None else hold_s)
         self._currently_vibrating = False
+        # Keep last_intensity / last_motor_index from the cue for frame logs
         self._last_angle = None
         print(f'[BeltCue] {name}')
 
@@ -1182,14 +1204,15 @@ class BeltAdapter(FeedbackDevice):
         if not self._virtual_belt:
             return
         inten = max(0, min(100, intensity))
+        motor_idx: Optional[int] = None
         if self._navel_motor_index is not None:
-            idx = self._motor_index_for_body_angle(angle_deg)
+            motor_idx = self._motor_index_for_body_angle(angle_deg)
             self._virtual_belt.send_vibration_command(
                 channel_index=1,
                 pattern=0,
                 intensity=inten,
                 orientation_type=MOTOR_INDEX,
-                orientation=idx,
+                orientation=motor_idx,
             )
         else:
             self._virtual_belt.send_vibration_command(
@@ -1199,3 +1222,4 @@ class BeltAdapter(FeedbackDevice):
                 orientation_type=ANGLE,
                 orientation=int(round(angle_deg)) % 360,
             )
+        self._last_motor_index = motor_idx

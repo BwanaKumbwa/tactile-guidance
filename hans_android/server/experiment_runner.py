@@ -323,7 +323,14 @@ class ExperimentRunner:
 
         if self._study is not None and self._study.trial_active:
             try:
-                self._study.end_trial(outcome)
+                if outcome in ('timeout', 'abort', 'tech_failure'):
+                    self._study.end_trial(end_reason=outcome)
+                elif outcome == 'success':
+                    # Desktop single-key path: mark handoff success (thesis);
+                    # grasp left blank unless you use run_study_session.py
+                    self._study.end_trial(handoff_outcome='success', grasp_outcome='')
+                else:
+                    self._study.end_trial(handoff_outcome='fail', grasp_outcome='')
             except Exception as e:
                 print(f'[Study] end_trial failed: {e}')
 

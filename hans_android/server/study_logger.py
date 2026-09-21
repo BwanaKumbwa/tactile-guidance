@@ -38,6 +38,20 @@ FRAME_FIELDS = [
     'target_depth_m',
     'target_xc',
     'target_yc',
+    'target_w',
+    'target_h',
+    'target_track_id',
+    'target_class_id',
+    'target_conf',
+    'hand_detected',
+    'hand_xc',
+    'hand_yc',
+    'hand_w',
+    'hand_h',
+    'hand_track_id',
+    'hand_class_id',
+    'hand_conf',
+    'hand_depth_m',
     'belt_in_approach',
     'belt_nav_mode',
     'belt_avoidance_active',
@@ -48,10 +62,16 @@ FRAME_FIELDS = [
     'belt_last_cue',
     'belt_signaled_handoff',
     'belt_handoff_unix',
+    'belt_vib_angle_deg',
+    'belt_vib_intensity',
+    'belt_vib_motor_index',
     'bracelet_active',
     'last_belt_cmd_unix',
     'last_bracelet_cmd_unix',
     'bracelet_zone_enter_unix',
+    'bracelet_vib_angle_deg',
+    'bracelet_vib_intensity',
+    'bracelet_vib_motor',
 ]
 
 TRIALS_FIELDS = [
@@ -64,7 +84,9 @@ TRIALS_FIELDS = [
     't0_iso',
     'sync_unix',
     'end_unix',
-    'outcome',
+    'handoff_outcome',
+    'grasp_outcome',
+    'end_reason',
     'timeout_s',
 ]
 
@@ -102,7 +124,9 @@ class _TrialRuntime:
     t0_unix: float
     sync_unix: Optional[float] = None
     end_unix: Optional[float] = None
-    outcome: Optional[str] = None
+    handoff_outcome: Optional[str] = None
+    grasp_outcome: Optional[str] = None
+    end_reason: Optional[str] = None
     dir: Path = field(default_factory=Path)
     frames_path: Path = field(default_factory=Path)
     events_path: Path = field(default_factory=Path)
@@ -110,6 +134,41 @@ class _TrialRuntime:
     frames_writer: Any = None
     video_writer: Any = None
     video_path: Optional[Path] = None
+
+
+_BINARY_OUTCOMES = frozenset({'success', 'fail'})
+_END_REASONS = frozenset({'timeout', 'abort', 'tech_failure'})
+
+
+def _norm_binary_outcome(value: Optional[str]) -> str:
+    """Normalize experimenter success/fail (empty if unset)."""
+    if value is None:
+        return ''
+    v = str(value).strip().lower()
+    if v in ('y', 'yes', 'true', '1'):
+        return 'success'
+    if v in ('n', 'no', 'false', '0'):
+        return 'fail'
+    if v in _BINARY_OUTCOMES:
+        return v
+    if v in ('', 'na', 'n/a', 'none'):
+        return ''
+    raise ValueError(
+        f'Invalid binary outcome {value!r}; use success|fail (or y/n)'
+    )
+
+
+def _norm_end_reason(value: Optional[str]) -> str:
+    if value is None:
+        return ''
+    v = str(value).strip().lower()
+    if v in ('', 'na', 'n/a', 'none', 'ok'):
+        return ''
+    if v in _END_REASONS:
+        return v
+    raise ValueError(
+        f'Invalid end_reason {value!r}; use timeout|abort|tech_failure'
+    )
 
 
 class StudyLogger:
@@ -329,22 +388,85 @@ class StudyLogger:
             print(f'[Study] sync marker trial={self._trial.meta.trial_id} t={ts:.3f}')
             return {'trial_id': self._trial.meta.trial_id, 'sync_unix': ts}
 
-    def end_trial(self, outcome: str) -> dict:
+    def end_trial(
+        self,
+        handoff_outcome: Optional[str] = None,
+        grasp_outcome: Optional[str] = None,
+        end_reason: Optional[str] = None,
+        **kwargs,
+    ) -> dict:
+        """
+        End the active trial.
+
+        Experimenter marks two independent results (not combined):
+          - handoff_outcome: success if participant reports the belt stopped
+            (thesis trial success is based on this)
+          - grasp_outcome: success if participant reports bracelet helped grasp
+
+        Optional end_reason: timeout | abort | tech_failure (no handoff/grasp marks).
+
+        Backward-compat: end_trial('abort'|'tech_failure'|...) or
+        end_trial(outcome='...') still works via kwargs / positional shim.
+        """
+        # Shim: end_trial('abort') / end_trial(outcome='fail') from older callers
+        if 'outcome' in kwargs and end_reason is None and handoff_outcome is None:
+            legacy = str(kwargs.pop('outcome')).strip().lower()
+            if legacy in _END_REASONS:
+                end_reason = legacy
+            elif legacy in _BINARY_OUTCOMES:
+                # Old single success/fail → treat as handoff mark only
+                handoff_outcome = legacy
+                if grasp_outcome is None:
+                    grasp_outcome = ''
+            else:
+                end_reason = legacy
+        if kwargs:
+            raise TypeError(f'Unexpected end_trial kwargs: {sorted(kwargs)}')
+
+        # Positional mistake: first arg was sometimes a string end reason
+        if (
+            isinstance(handoff_outcome, str)
+            and handoff_outcome.strip().lower() in _END_REASONS
+            and grasp_outcome is None
+            and end_reason is None
+        ):
+            end_reason = handoff_outcome.strip().lower()
+            handoff_outcome = None
+
         with self._lock:
             if self._trial is None or self._trial.end_unix is not None:
                 raise RuntimeError('No active trial to end')
             t = self._trial
             end = time.time()
             t.end_unix = end
-            t.outcome = str(outcome)
+
+            reason = _norm_end_reason(end_reason)
+            if reason:
+                h_out = ''
+                g_out = ''
+            else:
+                h_out = _norm_binary_outcome(handoff_outcome)
+                g_out = _norm_binary_outcome(grasp_outcome)
+                if not h_out and not g_out:
+                    raise ValueError(
+                        'Provide handoff_outcome and/or grasp_outcome '
+                        '(success|fail), or end_reason '
+                        '(timeout|abort|tech_failure)'
+                    )
+
+            t.handoff_outcome = h_out
+            t.grasp_outcome = g_out
+            t.end_reason = reason
 
             include = t.meta.include_in_analysis
-            if outcome in ('tech_failure', 'training') or t.meta.block == 'training':
-                include = False
-            if outcome == 'tech_failure':
+            if reason == 'tech_failure' or t.meta.block == 'training':
                 include = False
 
-            self._emit_event_unlocked('trial_end', {'outcome': outcome})
+            self._emit_event_unlocked('trial_end', {
+                'handoff_outcome': h_out,
+                'grasp_outcome': g_out,
+                'end_reason': reason,
+            })
             self._close_trial_files_unlocked()
 
             row = {
@@ -357,19 +479,24 @@ class StudyLogger:
                 't0_iso': _utc_iso(t.t0_unix),
                 'sync_unix': t.sync_unix if t.sync_unix is not None else '',
                 'end_unix': end,
-                'outcome': outcome,
+                'handoff_outcome': h_out,
+                'grasp_outcome': g_out,
+                'end_reason': reason,
                 'timeout_s': t.meta.timeout_s,
             }
             with open(self._trials_csv, 'a', newline='', encoding='utf-8') as f:
                 csv.DictWriter(f, fieldnames=TRIALS_FIELDS).writerow(row)
 
             print(
-                f'[Study] trial {t.meta.trial_id} ended outcome={outcome} '
-                f'include={include}'
+                f'[Study] trial {t.meta.trial_id} ended '
+                f'handoff={h_out or "—"} grasp={g_out or "—"} '
+                f'end_reason={reason or "—"} include={include}'
             )
             result = {
                 'trial_id': t.meta.trial_id,
-                'outcome': outcome,
+                'handoff_outcome': h_out,
+                'grasp_outcome': g_out,
+                'end_reason': reason,
                 'include_in_analysis': include,
                 'end_unix': end,
                 'trial_dir': str(t.dir.resolve()),
@@ -400,7 +527,7 @@ class StudyLogger:
         with self._lock:
             if self._trial is not None and self._trial.end_unix is None:
                 try:
-                    self.end_trial('abort')
+                    self.end_trial(end_reason='abort')
                 except Exception:
                     self._close_trial_files_unlocked()
                     self._trial = None
@@ -440,7 +567,8 @@ class StudyLogger:
 
             # Normalize booleans / None for CSV
             for key in (
-                'bottle_detected', 'belt_in_approach', 'belt_avoidance_active',
+                'bottle_detected', 'hand_detected',
+                'belt_in_approach', 'belt_avoidance_active',
                 'belt_plan_locked', 'belt_plan_has_obstacle', 'bracelet_active',
                 'belt_signaled_handoff',
             ):
@@ -611,12 +739,50 @@ class StudyLogger:
                 print(f'[Study] video write error: {e}')
 
 
+def _det_fields(det) -> Dict[str, Any]:
+    """Parse YOLO/track detection [xc, yc, w, h, track_id, class_id, conf, depth]."""
+    out = {
+        'xc': '', 'yc': '', 'w': '', 'h': '',
+        'track_id': '', 'class_id': '', 'conf': '', 'depth_m': '',
+    }
+    if det is None:
+        return out
+    try:
+        out['xc'] = float(det[0])
+        out['yc'] = float(det[1])
+        out['w'] = float(det[2])
+        out['h'] = float(det[3])
+    except Exception:
+        pass
+    try:
+        if len(det) > 4:
+            out['track_id'] = int(det[4])
+        if len(det) > 5:
+            out['class_id'] = int(det[5])
+        if len(det) > 6:
+            out['conf'] = float(det[6])
+        if len(det) > 7:
+            d = float(det[7])
+            if d > 0:
+                out['depth_m'] = d
+    except Exception:
+        pass
+    return out
+
+
+def _empty_to_blank(value: Any) -> Any:
+    if value is None:
+        return ''
+    return value
+
+
 def build_frame_snapshot(
     trial_id: int,
     outputs: list,
     target_class_id: int,
     belt_status: Optional[dict],
     bracelet_status: Optional[dict],
+    hand_class_ids: Optional[list] = None,
 ) -> Dict[str, Any]:
     """Assemble a frame row dict from pipeline + device status."""
     bottle = None
@@ -629,32 +795,43 @@ def build_frame_snapshot(
             except Exception:
                 continue
 
+    hand = None
+    hand_ids = set(int(x) for x in (hand_class_ids or []))
+    if outputs and hand_ids:
+        for det in outputs:
+            try:
+                if int(det[5]) in hand_ids:
+                    hand = det
+                    break
+            except Exception:
+                continue
+
     belt = belt_status or {}
     bracelet = bracelet_status or {}
     viz = belt.get('debug_viz') or {}
-
-    depth_m = ''
-    xc = yc = ''
-    if bottle is not None:
-        try:
-            xc = float(bottle[0])
-            yc = float(bottle[1])
-        except Exception:
-            pass
-        if len(bottle) > 7:
-            try:
-                d = float(bottle[7])
-                if d > 0:
-                    depth_m = d
-            except Exception:
-                pass
+    tgt = _det_fields(bottle)
+    hnd = _det_fields(hand)
 
     return {
         'trial_id': trial_id,
         'bottle_detected': bottle is not None,
-        'target_depth_m': depth_m,
-        'target_xc': xc,
-        'target_yc': yc,
+        'target_depth_m': tgt['depth_m'],
+        'target_xc': tgt['xc'],
+        'target_yc': tgt['yc'],
+        'target_w': tgt['w'],
+        'target_h': tgt['h'],
+        'target_track_id': tgt['track_id'],
+        'target_class_id': tgt['class_id'],
+        'target_conf': tgt['conf'],
+        'hand_detected': hand is not None,
+        'hand_xc': hnd['xc'],
+        'hand_yc': hnd['yc'],
+        'hand_w': hnd['w'],
+        'hand_h': hnd['h'],
+        'hand_track_id': hnd['track_id'],
+        'hand_class_id': hnd['class_id'],
+        'hand_conf': hnd['conf'],
+        'hand_depth_m': hnd['depth_m'],
         'belt_in_approach': belt.get('in_approach'),
         'belt_nav_mode': belt.get('navigation_mode', ''),
         'belt_avoidance_active': belt.get('avoidance_active'),
@@ -666,8 +843,14 @@ def build_frame_snapshot(
         'belt_last_cue': belt.get('last_cue') or '',
         'belt_signaled_handoff': belt.get('signaled_handoff'),
         'belt_handoff_unix': belt.get('handoff_unix') or '',
+        'belt_vib_angle_deg': _empty_to_blank(belt.get('last_angle')),
+        'belt_vib_intensity': _empty_to_blank(belt.get('last_intensity')),
+        'belt_vib_motor_index': _empty_to_blank(belt.get('last_motor_index')),
         'bracelet_active': bracelet.get('is_navigating') or bracelet.get('vibrating'),
         'last_belt_cmd_unix': belt.get('last_cmd_unix', ''),
         'last_bracelet_cmd_unix': bracelet.get('last_cmd_unix', ''),
         'bracelet_zone_enter_unix': bracelet.get('zone_enter_unix') or '',
+        'bracelet_vib_angle_deg': _empty_to_blank(bracelet.get('last_angle')),
+        'bracelet_vib_intensity': _empty_to_blank(bracelet.get('last_intensity')),
+        'bracelet_vib_motor': bracelet.get('last_motor') or '',
     }

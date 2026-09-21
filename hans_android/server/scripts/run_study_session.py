@@ -30,6 +30,13 @@ OUTCOMES = {
     'f': 'tech_failure',
 }
 
+BINARY_YN = {
+    'y': 'success',
+    'n': 'fail',
+    'success': 'success',
+    'fail': 'fail',
+}
+
 
 def _req(base: str, method: str, path: str, body: Optional[dict] = None) -> dict:
     data = None
@@ -66,6 +73,15 @@ def _ask(prompt: str, default: Optional[str] = None) -> str:
     if not raw and default is not None:
         return default
     return raw
+
+
+def _ask_binary(prompt: str) -> str:
+    """Ask y/n → success|fail."""
+    while True:
+        key = _ask(prompt, 'y').lower()
+        if key in BINARY_YN:
+            return BINARY_YN[key]
+        print('Use y (success) or n (fail)')
 
 
 def _ask_float(prompt: str, default: float) -> float:
@@ -154,20 +170,24 @@ def one_trial(base: str, defaults: dict) -> bool:
     print('SYNC')
     _print(_req(base, 'POST', '/study/sync'))
 
-    print('\n3) Trial running. When finished, enter outcome:')
-    print('   y=success  n=fail  t=timeout  a=abort  f=tech_failure')
-    while True:
-        key = _ask('outcome', 'y').lower()
-        if key in OUTCOMES:
-            outcome = OUTCOMES[key]
-            break
-        if key in OUTCOMES.values():
-            outcome = key
-            break
-        print('Use y/n/t/a/f')
-
-    print('END')
-    _print(_req(base, 'POST', '/study/trial/end', {'outcome': outcome}))
+    print('\n3) End trial — mark TWO independent results:')
+    print('   (or t/a/f for timeout / abort / tech_failure)')
+    early = _ask('Trial-level abort? (Enter to skip, or t/a/f)', '').lower()
+    if early in ('t', 'a', 'f'):
+        reason = OUTCOMES[early]  # timeout|abort|tech_failure
+        print('END')
+        _print(_req(base, 'POST', '/study/trial/end', {'end_reason': reason}))
+    else:
+        print('   Handoff: participant calls out that the belt stopped vibrating')
+        print('   (thesis trial success = handoff success)')
+        handoff = _ask_binary('Handoff correct? (y/n)')
+        print('   Grasp: participant says the bracelet helped them grasp the object')
+        grasp = _ask_binary('Grasp success? (y/n)')
+        print('END')
+        _print(_req(base, 'POST', '/study/trial/end', {
+            'handoff_outcome': handoff,
+            'grasp_outcome': grasp,
+        }))
 
     print('\nStatus:')
     _print(_req(base, 'GET', '/study/status'))
@@ -207,7 +227,8 @@ def main() -> int:
             start_session(args.base, args.participant, notes)
 
     defaults = {'block': 'direct', 'approach_type': 'direct', 'distance_m': 2.0}
-    print('\nReady. For each trial: start → ENTER at t0 → outcome.')
+    print('\nReady. For each trial: start → ENTER at t0 → handoff y/n → grasp y/n.')
+    print('(Thesis trial success = handoff only; grasp is logged separately.)')
     print('At block prompt, type q to quit.\n')
     print('Remember: NASA-TLX after each approach block; usability + debrief at end.')
     print('Fixed camera with 0.50 / 0.70 m tape should be recording separately.\n')

@@ -665,7 +665,11 @@ class StudyTrialStartRequest(BaseModel):
 
 
 class StudyTrialEndRequest(BaseModel):
-    outcome: str  # success | fail | timeout | abort | tech_failure
+    # Two independent experimenter marks (thesis success = handoff_outcome)
+    handoff_outcome: Optional[str] = None  # success | fail
+    grasp_outcome: Optional[str] = None    # success | fail
+    # Early stop without the two marks
+    end_reason: Optional[str] = None  # timeout | abort | tech_failure
 
 
 def _require_study_logger():
@@ -742,8 +746,25 @@ def study_trial_end(req: StudyTrialEndRequest):
     logger, err = _require_study_logger()
     if err:
         return err
+    if (
+        req.handoff_outcome is None
+        and req.grasp_outcome is None
+        and req.end_reason is None
+    ):
+        return {
+            "ok": False,
+            "error": "Provide handoff_outcome and/or grasp_outcome (success|fail), "
+                     "or end_reason (timeout|abort|tech_failure)",
+        }
     try:
-        return {"ok": True, **logger.end_trial(req.outcome)}
+        return {
+            "ok": True,
+            **logger.end_trial(
+                handoff_outcome=req.handoff_outcome,
+                grasp_outcome=req.grasp_outcome,
+                end_reason=req.end_reason,
+            ),
+        }
     except Exception as e:
         return {"ok": False, "error": str(e)}
 

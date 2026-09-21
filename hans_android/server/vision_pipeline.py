@@ -1076,12 +1076,16 @@ class VisionPipeline:
                     bracelet_st = st
             status = logger.get_status()
             trial_id = status.get('trial_id') or 0
+            hand_ids = [
+                h + self._index_add for h in self._cfg.classes_hand
+            ]
             snap = build_frame_snapshot(
                 trial_id=int(trial_id),
                 outputs=outputs or [],
                 target_class_id=self._class_target_obj,
                 belt_status=belt_st,
                 bracelet_status=bracelet_st,
+                hand_class_ids=hand_ids,
             )
             logger.on_frame(annotated_bgr, snap)
         except Exception as e:
