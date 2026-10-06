@@ -12,15 +12,23 @@ object BleManagerSingleton {
 
     fun getBraceletManager(context: Context): BleManager {
         if (braceletManager == null) {
-            braceletManager = BleManager(context)
+            braceletManager = BleManager(
+                context.applicationContext,
+                DeviceType.BRACELET
+            )
         }
+
         return braceletManager!!
     }
 
     fun getBeltManager(context: Context): BleManager {
         if (beltManager == null) {
-            beltManager = BleManager(context)
+            beltManager = BleManager(
+                context.applicationContext,
+                DeviceType.BELT
+            )
         }
+
         return beltManager!!
     }
 

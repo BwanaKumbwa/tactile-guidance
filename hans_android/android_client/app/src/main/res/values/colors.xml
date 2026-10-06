@@ -1,16 +1,42 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="purple_200">#FFBB86FC</color>
-    <color name="purple_500">#FF6200EE</color>
-    <color name="purple_700">#FF3700B3</color>
-    <color name="teal_200">#FF03DAC5</color>
-    <color name="teal_700">#FF018786</color>
+
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
     <color name="light_green">#EAF3DE</color>
-    <color name="icon_green">#3B6D11</color>
-    <color name="default_green">#7ED957</color>
-    <color name="text_green">#173404</color>
+    <color name="outline_red">#B3261E</color>
     <color name="light_red">#FDE2E1</color>
+    <color name="app_background">#E3E4E3</color>
+    <color name="light_grey">#3A4A3F</color>
+    <color name="feelspace">#4EB92B</color>
+
+    <!-- ICON LIGHT MODE -->
+    <color name="bluetooth_icon">#000000</color>
+    <color name="indicator">#245C33</color>
+    <color name="progress_bar">#BFD69A</color>
+    <color name="icon">#EAF3DE</color>
+    <color name="selected_icon">#245C33</color>
+
+    <!-- TEXT LIGHT MODE -->
+    <color name="text_primary">#FF000000</color>
+    <color name="text_secondary">#666666</color>
+    <color name="text_subtitle">#EAF3DE</color>
+    <color name="text_select">#FFFFFF</color>
+
+    <!-- CARD LIGHT MODE -->
+    <color name="border">#245C33</color>
+    <color name="card_fill">#EAF3DE</color>
+
+    <!-- BUTTON LIGHT MODE -->
+    <color name="button_outline">#245C33</color>
+    <color name="button_fill">#EAF3DE</color>
+    <color name="button_text">#FF000000</color>
+
+    <!-- BOTTOM NAVIGATION -->
+    <color name="bottom_nav_bg">#4A535C</color>
+    <color name="bottom_nav_selected">#4EB92B</color>
+    <color name="bottom_nav_not_selected">#FFFFFF</color>
+    <color name="bottom_nav_text">#FF000000</color>
+    <color name="bottom_nav_text_not_selected">#FFFFFF</color>
 
 </resources>

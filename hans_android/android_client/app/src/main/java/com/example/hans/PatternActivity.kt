@@ -8,6 +8,8 @@ import android.widget.Button
 import androidx.appcompat.app.AppCompatActivity
 import android.widget.RelativeLayout
 import android.util.Log
+import android.widget.ImageView
+import android.widget.TextView
 import org.json.JSONObject
 import okhttp3.Call
 import okhttp3.Callback
@@ -17,6 +19,10 @@ import okhttp3.Response
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
+import android.content.res.ColorStateList
+import android.view.ViewGroup
+import androidx.core.content.ContextCompat
+import androidx.core.widget.ImageViewCompat
 
 class PatternActivity : AppCompatActivity() {
 
@@ -26,6 +32,20 @@ class PatternActivity : AppCompatActivity() {
     private lateinit var VIB_PATTERN_MULTI: RelativeLayout
     private lateinit var VIB_PATTERN_SEQ: RelativeLayout
     private lateinit var braceletManager: BleManager
+    private lateinit var singleTitle: TextView
+    private lateinit var multiTitle: TextView
+    private lateinit var sequenceTitle: TextView
+
+    private lateinit var infoSingle: TextView
+    private lateinit var infoMulti: TextView
+    private lateinit var infoSequence: TextView
+    private lateinit var imgSingle: ImageView
+    private lateinit var imgMulti: ImageView
+    private lateinit var imgSequence: ImageView
+    private lateinit var imgCheckSingle: ImageView
+    private lateinit var imgCheckMulti: ImageView
+    private lateinit var imgCheckSequence: ImageView
+    private lateinit var bottomNav: BottomNavigationView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -36,6 +56,18 @@ class PatternActivity : AppCompatActivity() {
         VIB_PATTERN_SINGLE = findViewById(R.id.button_single)
         VIB_PATTERN_MULTI = findViewById(R.id.button_multi)
         VIB_PATTERN_SEQ = findViewById(R.id.button_sequence)
+        singleTitle = findViewById(R.id.single_motor)
+        multiTitle = findViewById(R.id.multi_motor)
+        sequenceTitle = findViewById(R.id.sequence_motor)
+        infoSingle = findViewById(R.id.info_single)
+        infoMulti = findViewById(R.id.info_multi)
+        infoSequence = findViewById(R.id.info_sequence)
+        imgSingle = findViewById(R.id.imgSingle)
+        imgMulti = findViewById(R.id.imgMulti)
+        imgSequence = findViewById(R.id.imgSequence)
+        imgCheckSingle = findViewById(R.id.imgCheckSingle)
+        imgCheckMulti = findViewById(R.id.imgCheckMulti)
+        imgCheckSequence = findViewById(R.id.imgCheckSequence)
 
         val selectButton = findViewById<Button>(R.id.button_select_pattern)
 
@@ -87,9 +119,11 @@ class PatternActivity : AppCompatActivity() {
             finish()
         }
 
-        val bottomNav = findViewById<BottomNavigationView>(R.id.bottomNavigation)
-
+        bottomNav = findViewById(R.id.bottomNavigation)
         bottomNav.selectedItemId = R.id.menu_setting
+        bottomNav.post {
+            updateBottomNavBackground(R.id.menu_setting)
+        }
         bottomNav.setOnItemSelectedListener { item ->
 
             when (item.itemId) {
@@ -233,14 +267,115 @@ class PatternActivity : AppCompatActivity() {
     }
 
     private fun updateSelection() {
-        VIB_PATTERN_SINGLE.setBackgroundResource(R.drawable.bg_outline)
-        VIB_PATTERN_MULTI.setBackgroundResource(R.drawable.bg_outline)
-        VIB_PATTERN_SEQ.setBackgroundResource(R.drawable.bg_outline)
+        VIB_PATTERN_SINGLE.setBackgroundResource(R.drawable.bg_card)
+        VIB_PATTERN_MULTI.setBackgroundResource(R.drawable.bg_card)
+        VIB_PATTERN_SEQ.setBackgroundResource(R.drawable.bg_card)
+
+        singleTitle.setTextColor(getColor(R.color.text_primary))
+        multiTitle.setTextColor(getColor(R.color.text_primary))
+        sequenceTitle.setTextColor(getColor(R.color.text_primary))
+
+        infoSingle.setTextColor(getColor(R.color.text_secondary))
+        infoMulti.setTextColor(getColor(R.color.text_secondary))
+        infoSequence.setTextColor(getColor(R.color.text_secondary))
+
+        imgSingle.setBackgroundResource(R.drawable.circle_green)
+        imgMulti.setBackgroundResource(R.drawable.circle_green)
+        imgSequence.setBackgroundResource(R.drawable.circle_green)
+
+        imgSingle.setImageResource(R.drawable.ic_single)
+        imgMulti.setImageResource(R.drawable.ic_multi)
+        imgSequence.setImageResource(R.drawable.ic_sequence)
+
+        ImageViewCompat.setImageTintList(
+            imgSingle,
+            ColorStateList.valueOf(getColor(R.color.icon)))
+        ImageViewCompat.setImageTintList(
+            imgMulti,
+            ColorStateList.valueOf(getColor(R.color.icon)))
+        ImageViewCompat.setImageTintList(
+            imgSequence,
+            ColorStateList.valueOf(getColor(R.color.icon)))
+
+        imgCheckSingle.setImageResource(R.drawable.ic_circle)
+        imgCheckMulti.setImageResource(R.drawable.ic_circle)
+        imgCheckSequence.setImageResource(R.drawable.ic_circle)
 
         when (selectedIndex) {
-            0 -> VIB_PATTERN_SINGLE.setBackgroundResource(R.drawable.bg_green)
-            1 -> VIB_PATTERN_MULTI.setBackgroundResource(R.drawable.bg_green)
-            2 -> VIB_PATTERN_SEQ.setBackgroundResource(R.drawable.bg_green)
+
+            0 -> {
+                VIB_PATTERN_SINGLE.setBackgroundResource(R.drawable.bg_default)
+                singleTitle.setTextColor(getColor(R.color.text_select))
+                infoSingle.setTextColor(getColor(R.color.text_subtitle))
+                imgSingle.setBackgroundResource(R.drawable.circle_green_selected)
+                ImageViewCompat.setImageTintList(
+                    imgSingle,
+                    ColorStateList.valueOf(getColor(R.color.selected_icon)))
+                imgCheckSingle.setImageResource(R.drawable.ic_circle_checked)
+            }
+
+            1 -> {
+                VIB_PATTERN_MULTI.setBackgroundResource(R.drawable.bg_default)
+                multiTitle.setTextColor(getColor(R.color.text_select))
+                infoMulti.setTextColor(getColor(R.color.text_subtitle))
+                imgMulti.setBackgroundResource(R.drawable.circle_green_selected)
+                ImageViewCompat.setImageTintList(
+                    imgMulti,
+                    ColorStateList.valueOf(getColor(R.color.selected_icon)))
+                imgCheckMulti.setImageResource(R.drawable.ic_circle_checked)
+            }
+
+            2 -> {
+                VIB_PATTERN_SEQ.setBackgroundResource(R.drawable.bg_default)
+                sequenceTitle.setTextColor(getColor(R.color.text_select))
+                infoSequence.setTextColor(getColor(R.color.text_subtitle))
+                imgSequence.setBackgroundResource(R.drawable.circle_green_selected)
+                ImageViewCompat.setImageTintList(
+                    imgSequence,
+                    ColorStateList.valueOf(getColor(R.color.selected_icon)))
+                imgCheckSequence.setImageResource(R.drawable.ic_circle_checked)
+            }
+        }
+    }
+    private fun updateBottomNavBackground(page: Int) {
+
+        val menuView = bottomNav.getChildAt(0) as ViewGroup
+
+        val home = menuView.getChildAt(0)
+        val camera = menuView.getChildAt(1)
+        val setting = menuView.getChildAt(2)
+
+        val rectangle = ContextCompat.getDrawable(this, R.drawable.bottom_rectangle)
+        val rectangleSelected = ContextCompat.getDrawable(this, R.drawable.bottom_rectangle_selected)
+        val topLeft = ContextCompat.getDrawable(this, R.drawable.bottom_top_left)
+        val topLeftSelected = ContextCompat.getDrawable(this, R.drawable.bottom_top_left_selected)
+        val topRight = ContextCompat.getDrawable(this, R.drawable.bottom_top_right)
+        val topRightSelected = ContextCompat.getDrawable(this, R.drawable.bottom_top_right_selected)
+
+        when (page) {
+            // HOME
+            R.id.menu_home -> {
+
+                home.background = rectangleSelected
+                camera.background = topLeft
+                setting.background = rectangle
+            }
+
+            // CAMERA
+            R.id.menu_camera -> {
+
+                home.background = topRight
+                camera.background = rectangleSelected
+                setting.background = topLeft
+            }
+
+            // SETTINGS
+            R.id.menu_setting -> {
+
+                home.background = rectangle
+                camera.background = topRight
+                setting.background = rectangleSelected
+            }
         }
     }
 }

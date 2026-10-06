@@ -45,6 +45,11 @@ import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 import androidx.constraintlayout.widget.ConstraintLayout
 import com.google.android.material.bottomnavigation.BottomNavigationView
+import android.view.ViewGroup
+import android.graphics.Color
+import android.view.Gravity
+import android.view.View
+import android.widget.FrameLayout
 
 class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurfaceView.Renderer {
 
@@ -67,11 +72,12 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
     private lateinit var tvStatus: TextView
     private lateinit var tvAiResponse: TextView
     private lateinit var btnPtt: ConstraintLayout
-
+    private lateinit var bottomNav: BottomNavigationView
+    private lateinit var bottomColorBar: View
+    private val PTT_COLOR_IDLE = "#CC2196F3"
+    private val PTT_COLOR_ACTIVE = "#CCCC0000"
     // PTT State
     @Volatile private var isPttRecording = false
-    private val PTT_COLOR_IDLE   = android.graphics.Color.parseColor("#CC2196F3")
-    private val PTT_COLOR_ACTIVE = android.graphics.Color.parseColor("#CCCC0000")
 
     // ARCore Session
     private var arSession: Session? = null
@@ -118,9 +124,13 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
         tvAiResponse = findViewById(R.id.tvAiResponse)
         btnPtt      = findViewById(R.id.rootLayout)
 
-        val bottomNav = findViewById<BottomNavigationView>(R.id.bottomNavigation)
-
+        bottomNav = findViewById(R.id.bottomNavigation)
+        addBottomColorBar()
         bottomNav.selectedItemId = R.id.menu_camera
+        bottomNav.post {
+            updateBottomNavBackground(R.id.menu_camera)
+            updateBottomNavBarColor(false)
+}
         bottomNav.setOnItemSelectedListener { item ->
 
             when (item.itemId) {
@@ -618,7 +628,9 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
 
         runOnUiThread {
             tvStatus.text = "🔴 Recording... release to send"
-            btnPtt.setBackgroundColor(PTT_COLOR_ACTIVE)
+            btnPtt.setBackgroundColor(Color.parseColor(PTT_COLOR_ACTIVE))
+            updateBottomNavBarColor(true)
+
         }
 
         try {
@@ -699,7 +711,8 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
         runOnUiThread {
             isPttRecording   = false
             btnPtt.isEnabled = true
-            btnPtt.setBackgroundColor(PTT_COLOR_IDLE)
+            btnPtt.setBackgroundColor(Color.parseColor(PTT_COLOR_IDLE))
+            updateBottomNavBarColor(false)
         }
     }
 
@@ -948,5 +961,92 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
         //BleManagerSingleton.disconnectAll()
         try { speechRecognizer.destroy() } catch (e: Exception) {}
         if (::tts.isInitialized) { tts.stop(); tts.shutdown() }
+    }
+
+    private fun dpToPx(dp: Int): Int {
+        return (dp * resources.displayMetrics.density).toInt()
+    }
+
+    private fun addBottomColorBar() {
+        bottomColorBar = View(this).apply {
+            setBackgroundColor(Color.parseColor(PTT_COLOR_IDLE))
+            isClickable = false
+            isFocusable = false
+        }
+
+        val params = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            dpToPx(30)
+        ).apply {
+            gravity = Gravity.BOTTOM
+        }
+
+        bottomNav.addView(bottomColorBar, 0, params)
+    }
+
+    private fun updateBottomNavBarColor(active: Boolean) {
+        if (active) {
+            bottomColorBar.setBackgroundColor(
+                Color.parseColor(PTT_COLOR_ACTIVE)
+            )
+        } else {
+            bottomColorBar.setBackgroundColor(
+                Color.parseColor(PTT_COLOR_IDLE)
+            )
+        }
+    }
+
+    private fun updateBottomNavBackground(page: Int) {
+
+        val menuView = bottomNav.getChildAt(1) as ViewGroup
+
+        val home = menuView.getChildAt(0)
+        val camera = menuView.getChildAt(1)
+        val setting = menuView.getChildAt(2)
+
+        val rectangle = ContextCompat.getDrawable(
+            this,
+            R.drawable.bottom_rectangle
+        )
+        val rectangleSelected = ContextCompat.getDrawable(
+            this,
+            R.drawable.bottom_rectangle_selected
+        )
+        val topLeft = ContextCompat.getDrawable(
+            this,
+            R.drawable.bottom_top_left
+        )
+        val topLeftSelected = ContextCompat.getDrawable(
+            this,
+            R.drawable.bottom_top_left_selected
+        )
+        val topRight = ContextCompat.getDrawable(
+            this,
+            R.drawable.bottom_top_right
+        )
+        val topRightSelected = ContextCompat.getDrawable(
+            this,
+            R.drawable.bottom_top_right_selected
+        )
+
+        when (page) {
+            R.id.menu_home -> {
+                home.background = rectangleSelected
+                camera.background = topLeft
+                setting.background = rectangle
+            }
+
+            R.id.menu_camera -> {
+                home.background = topRight
+                camera.background = rectangleSelected
+                setting.background = topLeft
+            }
+
+            R.id.menu_setting -> {
+                home.background = rectangle
+                camera.background = topRight
+                setting.background = rectangleSelected
+            }
+        }
     }
 }

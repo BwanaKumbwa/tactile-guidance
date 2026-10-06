@@ -9,9 +9,18 @@ import android.util.Log
 import java.util.LinkedList
 import java.util.Queue
 import java.util.UUID
+import kotlin.math.roundToInt
 
 @SuppressLint("MissingPermission")
-class BleManager(private val context: Context) {
+enum class DeviceType {
+    BRACELET,
+    BELT
+}
+
+class BleManager(
+    private val context: Context,
+    private val deviceType: DeviceType
+) {
 
     private var bluetoothGatt: BluetoothGatt? = null
     private val adapter: BluetoothAdapter? = (context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter
@@ -21,12 +30,54 @@ class BleManager(private val context: Context) {
     // =================================================================
     // UUIDs
     // =================================================================
-    private val SERVICE_UUID = UUID.fromString("0000fe55-0000-1000-8000-00805f9b34fb")
-    private val KEEP_ALIVE   = UUID.fromString("0000fe02-0000-1000-8000-00805f9b34fb")
-    private val WRITE_UUID   = UUID.fromString("0000fe15-0000-1000-8000-00805f9b34fb")
-    private val PARAM_UUID   = UUID.fromString("0000fe05-0000-1000-8000-00805f9b34fb")
-    private val NOTIFY_UUID  = UUID.fromString("0000fe16-0000-1000-8000-00805f9b34fb")
-    private val CCCD_UUID    = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
+    private val SERVICE_UUID: UUID
+        get() = when (deviceType) {
+            DeviceType.BELT ->
+                UUID.fromString("0000fe51-0000-1000-8000-00805f9b34fb")
+
+            DeviceType.BRACELET ->
+                UUID.fromString("0000fe55-0000-1000-8000-00805f9b34fb")
+        }
+
+    private val KEEP_ALIVE_UUID: UUID
+        get() = when (deviceType) {
+            DeviceType.BELT ->
+                UUID.fromString("0000fe02-0000-1000-8000-00805f9b34fb")
+
+            DeviceType.BRACELET ->
+                UUID.fromString("0000fe02-0000-1000-8000-00805f9b34fb")
+        }
+
+    private val WRITE_UUID: UUID
+        get() = when (deviceType) {
+            DeviceType.BELT ->
+                UUID.fromString("0000fe03-0000-1000-8000-00805f9b34fb")
+
+            DeviceType.BRACELET ->
+                UUID.fromString("0000fe15-0000-1000-8000-00805f9b34fb")
+        }
+
+    private val PARAM_UUID: UUID
+        get() = when (deviceType) {
+            DeviceType.BELT ->
+                UUID.fromString("0000fe05-0000-1000-8000-00805f9b34fb")
+
+            DeviceType.BRACELET ->
+                UUID.fromString("0000fe05-0000-1000-8000-00805f9b34fb")
+        }
+
+    private val NOTIFY_UUID: UUID
+        get() = when (deviceType) {
+            DeviceType.BELT ->
+                UUID.fromString("0000fe09-0000-1000-8000-00805f9b34fb")
+
+            DeviceType.BRACELET ->
+                UUID.fromString("0000fe16-0000-1000-8000-00805f9b34fb")
+        }
+
+    private val BELT_FIRMWARE_UUID = UUID.fromString("0000fe01-0000-1000-8000-00805f9b34fb")
+
+    private val CCCD_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
 
     // Robust Command Queue
     private val commandQueue: Queue<Runnable> = LinkedList()
@@ -35,10 +86,9 @@ class BleManager(private val context: Context) {
     private var currentTimeout: Runnable? = null
 
     interface InformationListener {
-        fun onBatteryUpdate(chargeState: Int, batteryLevel: Int)
-        fun onFirmwareUpdate(major: Int, minor: Int, protocol: Int)
+        fun onBatteryUpdate(chargeState: Int, batteryLevel: Float)
+        fun onFirmwareUpdate(version:String)
     }
-
     private var informationListener: InformationListener? = null
 
     fun setInformationListener(listener: InformationListener?) {
@@ -167,43 +217,158 @@ class BleManager(private val context: Context) {
     }
 
     fun requestBattery() {
-        val command = byteArrayOf(
-            0x0B.toByte(),
-            0x01.toByte(),
-            0x01.toByte()
-        )
+        when (deviceType) {
 
-        writeRawCommand(command)
+            DeviceType.BRACELET -> {
+                val command = byteArrayOf(
+                    0x0B.toByte(),
+                    0x01.toByte(),
+                    0x01.toByte()
+                )
 
-        Log.d("BLE", "[$deviceName] Battery request sent")
+                writeRawCommand(command)
+
+                Log.d("BLE", "[$deviceName] Bracelet battery request sent")
+            }
+
+            DeviceType.BELT -> {
+                Log.d(
+                    "BLE",
+                    "[$deviceName] Belt battery uses power status notification"
+                )
+            }
+        }
     }
 
     fun requestFirmware() {
-        val command = byteArrayOf(
-            0x06.toByte(),
-            0x00.toByte()
-        )
+        when (deviceType) {
 
-        writeRawCommand(command)
+            DeviceType.BRACELET -> {
+                val command = byteArrayOf(
+                    0x06.toByte(),
+                    0x00.toByte()
+                )
 
-        Log.d("BLE", "[$deviceName] Firmware request sent")
+                writeRawCommand(command)
+
+                Log.d(
+                    "BLE",
+                    "[$deviceName] Bracelet firmware request sent"
+                )
+            }
+
+            DeviceType.BELT -> {
+                enqueueCommand {
+                    val service = bluetoothGatt?.getService(SERVICE_UUID)
+
+                    if (service == null) {
+                        Log.e("BLE", "[$deviceName] ❌ Belt service not found for firmware")
+                        commandCompleted()
+                        return@enqueueCommand
+                    }
+
+                    val char = service.getCharacteristic(BELT_FIRMWARE_UUID)
+
+                    if (char == null) {
+                        Log.e("BLE", "[$deviceName] ❌ Belt firmware FE01 not found")
+                        commandCompleted()
+                        return@enqueueCommand
+                    }
+
+                    val success =
+                        bluetoothGatt?.readCharacteristic(char) ?: false
+
+                    if (!success) {
+                        Log.e("BLE", "[$deviceName] ❌ Read Belt firmware failed")
+                        commandCompleted()
+                    }
+                }
+            }
+        }
     }
 
     private fun subscribeTo(uuid: UUID, name: String) {
         enqueueCommand {
-            val char = bluetoothGatt?.getService(SERVICE_UUID)?.getCharacteristic(uuid)
-            if (char != null) {
-                bluetoothGatt?.setCharacteristicNotification(char, true)
-                val desc = char.getDescriptor(CCCD_UUID)
-                if (desc != null) {
-                    desc.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-                    if (bluetoothGatt?.writeDescriptor(desc) == false) {
-                        commandCompleted()
-                    }
-                } else {
-                    commandCompleted()
-                }
-            } else {
+            val service = bluetoothGatt?.getService(SERVICE_UUID)
+
+            if (service == null) {
+                Log.e(
+                    "BLE",
+                    "[$deviceName] ❌ Service not found for $name: $SERVICE_UUID"
+                )
+                commandCompleted()
+                return@enqueueCommand
+            }
+
+            val char = service.getCharacteristic(uuid)
+
+            if (char == null) {
+                Log.e(
+                    "BLE",
+                    "[$deviceName] ❌ Characteristic not found for $name: $uuid"
+                )
+                commandCompleted()
+                return@enqueueCommand
+            }
+
+            val properties = char.properties
+
+            Log.d(
+                "BLE",
+                "[$deviceName] $name found: $uuid " +
+                        "properties=$properties " +
+                        "NOTIFY=${(properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY) != 0} " +
+                        "INDICATE=${(properties and BluetoothGattCharacteristic.PROPERTY_INDICATE) != 0}"
+            )
+
+            val localEnabled =
+                bluetoothGatt?.setCharacteristicNotification(char, true) ?: false
+
+            Log.d(
+                "BLE",
+                "[$deviceName] setCharacteristicNotification($name) = $localEnabled"
+            )
+
+            if (!localEnabled) {
+                Log.e(
+                    "BLE",
+                    "[$deviceName] ❌ Local notification enable failed: $uuid"
+                )
+                commandCompleted()
+                return@enqueueCommand
+            }
+
+            val desc = char.getDescriptor(CCCD_UUID)
+
+            if (desc == null) {
+                Log.e(
+                    "BLE",
+                    "[$deviceName] ❌ CCCD not found for $name: $uuid"
+                )
+                commandCompleted()
+                return@enqueueCommand
+            }
+
+            Log.d(
+                "BLE",
+                "[$deviceName] CCCD found for $name: ${desc.uuid}"
+            )
+
+            desc.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+
+            val descriptorWrite =
+                bluetoothGatt?.writeDescriptor(desc) ?: false
+
+            Log.d(
+                "BLE",
+                "[$deviceName] writeDescriptor($name) = $descriptorWrite"
+            )
+
+            if (!descriptorWrite) {
+                Log.e(
+                    "BLE",
+                    "[$deviceName] ❌ CCCD write failed for $name"
+                )
                 commandCompleted()
             }
         }
@@ -230,6 +395,16 @@ class BleManager(private val context: Context) {
             status: Int,
             newState: Int
         ) {
+            // Abaikan callback dari koneksi GATT lama
+            if (bluetoothGatt !== gatt) {
+                Log.w(
+                    "BLE",
+                    "[$deviceName] ⚠️ Ignoring stale GATT callback " +
+                            "from ${gatt.device.address}"
+                )
+                return
+            }
+
             Log.e("BLE", "========================================")
             Log.e("BLE", "[$deviceName] onConnectionStateChange()")
             Log.e("BLE", "[$deviceName] address = ${gatt.device.address}")
@@ -245,7 +420,28 @@ class BleManager(private val context: Context) {
                     Log.e("BLE", "[$deviceName] >>> CONNECTED <<<")
 
                     handler.postDelayed({
-                        Log.e("BLE", "[$deviceName] Starting service discovery...")
+
+                        // Pastikan GATT yang sama masih aktif
+                        if (bluetoothGatt !== gatt) {
+                            Log.w(
+                                "BLE",
+                                "[$deviceName] ⚠️ Skip service discovery: stale GATT"
+                            )
+                            return@postDelayed
+                        }
+
+                        if (connectionState != BluetoothProfile.STATE_CONNECTED) {
+                            Log.w(
+                                "BLE",
+                                "[$deviceName] ⚠️ Skip service discovery: no longer connected"
+                            )
+                            return@postDelayed
+                        }
+
+                        Log.e(
+                            "BLE",
+                            "[$deviceName] Starting service discovery..."
+                        )
 
                         val result = gatt.discoverServices()
 
@@ -253,6 +449,7 @@ class BleManager(private val context: Context) {
                             "BLE",
                             "[$deviceName] discoverServices() returned = $result"
                         )
+
                     }, 1000)
                 }
 
@@ -267,16 +464,26 @@ class BleManager(private val context: Context) {
                         isExecuting = false
                     }
 
-                    // Penting: tutup GATT setelah disconnect
                     gatt.close()
+
+                    // Hanya kosongkan current GATT jika memang ini GATT aktif
+                    if (bluetoothGatt === gatt) {
+                        bluetoothGatt = null
+                    }
                 }
 
                 BluetoothProfile.STATE_CONNECTING -> {
-                    Log.e("BLE", "[$deviceName] >>> CONNECTING <<<")
+                    Log.e(
+                        "BLE",
+                        "[$deviceName] >>> CONNECTING <<<"
+                    )
                 }
 
                 BluetoothProfile.STATE_DISCONNECTING -> {
-                    Log.e("BLE", "[$deviceName] >>> DISCONNECTING <<<")
+                    Log.e(
+                        "BLE",
+                        "[$deviceName] >>> DISCONNECTING <<<"
+                    )
                 }
 
                 else -> {
@@ -292,64 +499,78 @@ class BleManager(private val context: Context) {
             gatt: BluetoothGatt,
             status: Int
         ) {
-            Log.i(
-                "BLE",
-                "[$deviceName] onServicesDiscovered status=$status"
-            )
+            super.onServicesDiscovered(gatt, status)
 
-            if (status == BluetoothGatt.GATT_SUCCESS) {
+            if (status != BluetoothGatt.GATT_SUCCESS) {
+                Log.e("BLE", "[$deviceName] Service discovery failed: $status")
+                return
+            }
 
-                Log.i("BLE", "[$deviceName] Services discovered!")
+            Log.i("BLE", "[$deviceName] Services discovered")
 
-                for (service in gatt.services) {
-                    Log.i("BLE", "SERVICE: ${service.uuid}")
+            when (deviceType) {
 
-                    for (characteristic in service.characteristics) {
-                        Log.i(
-                            "BLE",
-                            "  CHARACTERISTIC: ${characteristic.uuid}"
-                        )
-                    }
-                }
+                DeviceType.BELT -> {
+                    Log.i("BLE", "[$deviceName] Using Belt service FE51")
 
-                val service = gatt.getService(SERVICE_UUID)
-
-                if (service == null) {
-                    Log.e(
-                        "BLE",
-                        "[$deviceName] ❌ SERVICE FE55 NOT FOUND!"
+                    subscribeTo(
+                        UUID.fromString("0000fe09-0000-1000-8000-00805f9b34fb"),
+                        "Belt Battery FE09"
                     )
-                    return
                 }
 
-                Log.i("BLE", "[$deviceName] ✓ SERVICE FE55 FOUND")
+                DeviceType.BRACELET -> {
+                    Log.i("BLE", "[$deviceName] Using Bracelet service FE55")
 
-                subscribeTo(KEEP_ALIVE, "Keep Alive (FE02)")
-                subscribeTo(NOTIFY_UUID, "Param Notify (FE16)")
+                    subscribeTo(
+                        UUID.fromString("0000fe02-0000-1000-8000-00805f9b34fb"),
+                        "Bracelet Keep Alive"
+                    )
 
-                writeParam(
-                    byteArrayOf(0x01, 0x81.toByte(), 0x03),
-                    "Set Belt to APP MODE"
-                )
+                    subscribeTo(
+                        UUID.fromString("0000fe16-0000-1000-8000-00805f9b34fb"),
+                        "Bracelet Notify"
+                    )
 
-                val stopBytes = byteArrayOf(
-                    0x30,
-                    0xFF.toByte()
-                )
+                    val stopBytes = byteArrayOf(
+                        0x03,
+                        0x01,
+                        0xFF.toByte()
+                    )
 
-                writeRawCommand(stopBytes)
-                restoreBraceletIntensity()
-                restoreBraceletPattern()
+                    writeRawCommand(stopBytes)
 
-            } else {
-                Log.e(
-                    "BLE",
-                    "[$deviceName] ❌ Service discovery FAILED! status=$status"
-                )
+                    restoreBraceletIntensity()
+                    restoreBraceletPattern()
+                }
             }
         }
 
-        override fun onDescriptorWrite(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
+        override fun onDescriptorWrite(
+            gatt: BluetoothGatt,
+            descriptor: BluetoothGattDescriptor,
+            status: Int
+        ) {
+            Log.d(
+                "BLE",
+                "[$deviceName] onDescriptorWrite: " +
+                        "uuid=${descriptor.uuid}, " +
+                        "char=${descriptor.characteristic.uuid}, " +
+                        "status=$status"
+            )
+
+            if (status == BluetoothGatt.GATT_SUCCESS) {
+                Log.d(
+                    "BLE",
+                    "[$deviceName] ✅ CCCD write SUCCESS"
+                )
+            } else {
+                Log.e(
+                    "BLE",
+                    "[$deviceName] ❌ CCCD write FAILED status=$status"
+                )
+            }
+
             commandCompleted()
         }
 
@@ -361,77 +582,222 @@ class BleManager(private val context: Context) {
         }
 
         @Deprecated("Deprecated in Java")
-        override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
+        override fun onCharacteristicChanged(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic
+        ) {
+            val data = characteristic.value
+
             Log.d(
                 "BLE",
                 "[$deviceName] NOTIFICATION ${characteristic.uuid}: ${
-                    characteristic.value.joinToString("") { "%02X".format(it) }
+                    data.joinToString(" ") { "%02X".format(it) }
                 }"
             )
 
-            if (characteristic.uuid == KEEP_ALIVE) {
-                enqueueCommand {
-                    val char = gatt.getService(SERVICE_UUID)?.getCharacteristic(KEEP_ALIVE)
-                    if (char != null) {
-                        char.value = byteArrayOf(0x01)
-                        char.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
-                        if (bluetoothGatt?.writeCharacteristic(char) == false) {
-                            commandCompleted()
+            when (deviceType) {
+
+                DeviceType.BRACELET -> {
+
+                    // Bracelet FE02 = Keep Alive
+                    if (characteristic.uuid == KEEP_ALIVE_UUID) {
+                        enqueueCommand {
+                            val char = gatt
+                                .getService(SERVICE_UUID)
+                                ?.getCharacteristic(KEEP_ALIVE_UUID)
+
+                            if (char != null) {
+                                char.value = byteArrayOf(0x01)
+                                char.writeType =
+                                    BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+
+                                if (bluetoothGatt?.writeCharacteristic(char) == false) {
+                                    commandCompleted()
+                                }
+                            } else {
+                                commandCompleted()
+                            }
                         }
-                    } else {
-                        commandCompleted()
+                    }
+
+                    // Bracelet FE16 = notification
+                    if (characteristic.uuid == NOTIFY_UUID) {
+                        parseBraceletNotification(data)
+                    }
+                }
+
+                DeviceType.BELT -> {
+
+                    // Belt FE06 = notification
+                    if (characteristic.uuid == NOTIFY_UUID) {
+                        parseBeltNotification(data)
                     }
                 }
             }
-
-            if (characteristic.uuid == NOTIFY_UUID) {
-
-                val data = characteristic.value
-
-                // Battery notification: 8B 02 [charge_state] [battery_level]
-                if (data.size >= 4 && data[0].toInt() and 0xFF == 0x8B) {
-
-                    val chargeState = data[2].toInt() and 0xFF
-                    val batteryLevel = data[3].toInt() and 0xFF
-
-                    Log.d(
-                        "BLE",
-                        "[$deviceName] Battery: $batteryLevel%, state=$chargeState"
-                    )
-
-                    handler.post {
-                        informationListener?.onBatteryUpdate(
-                            chargeState,
-                            batteryLevel
-                        )
-                    }
-                }
-
-                // Firmware notification: 86 04 [variant] [major] [minor] [protocol]
-                if (data.size >= 6 && data[0].toInt() and 0xFF == 0x86) {
-
-                    val major = data[3].toInt() and 0xFF
-                    val minor = data[4].toInt() and 0xFF
-                    val protocol = data[5].toInt() and 0xFF
-
-                    Log.d(
-                        "BLE",
-                        "[$deviceName] Firmware: $major.$minor"
-                    )
-
-                    handler.post {
-                        informationListener?.onFirmwareUpdate(
-                            major,
-                            minor,
-                            protocol
-                        )
-                    }
-                }
+        }
+        @Deprecated("Deprecated in Java")
+        override fun onCharacteristicRead(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+            status: Int
+        ) {
+            if (status != BluetoothGatt.GATT_SUCCESS) {
+                Log.e(
+                    "BLE",
+                    "[$deviceName] Characteristic read failed: " +
+                            "uuid=${characteristic.uuid}, status=$status"
+                )
+                commandCompleted()
+                return
             }
 
+            val data = characteristic.value
+
+            Log.d(
+                "BLE",
+                "[$deviceName] READ ${characteristic.uuid}: ${
+                    data.joinToString(" ") { "%02X".format(it) }
+                }"
+            )
+
+            if (
+                deviceType == DeviceType.BELT &&
+                characteristic.uuid == BELT_FIRMWARE_UUID
+            ) {
+                parseBeltFirmware(data)
+            }
+
+            commandCompleted()
         }
     }
 
+    private fun parseBeltFirmware(data: ByteArray) {
+        if (data.size < 2) {
+            Log.w(
+                "BLE",
+                "[$deviceName] Belt firmware data too short: ${data.size}"
+            )
+            return
+        }
+
+        val firmwareVersion =
+            (data[0].toInt() and 0xFF) or
+                    ((data[1].toInt() and 0xFF) shl 8)
+
+        Log.d(
+            "BLE",
+            "[$deviceName] Belt Firmware Version: $firmwareVersion"
+        )
+
+        handler.post {
+            informationListener?.onFirmwareUpdate(
+                firmwareVersion.toString()
+            )
+        }
+    }
+
+    private fun parseBeltNotification(data: ByteArray) {
+        if (data.size < 9) {
+            Log.w(
+                "BLE",
+                "[$deviceName] Belt battery packet too short: ${data.size}"
+            )
+            return
+        }
+
+        val batteryStatus =
+            data[0].toInt() and 0xFF
+
+        val chargeRaw =
+            (data[1].toInt() and 0xFF) or
+                    ((data[2].toInt() and 0xFF) shl 8)
+
+        var chargeLevel =
+            chargeRaw / 256.0f
+
+        if (chargeLevel > 100f) {
+            chargeLevel = 100f
+        }
+
+        val ttfeRaw =
+            (data[3].toInt() and 0xFF) or
+                    ((data[4].toInt() and 0xFF) shl 8)
+
+        val ttfe =
+            ttfeRaw * 5.625f
+
+        val currentRaw =
+            (data[5].toInt() and 0xFF) or
+                    ((data[6].toInt() and 0xFF) shl 8)
+
+        val currentMa =
+            currentRaw.toShort().toInt()
+
+        val voltageMv =
+            (data[7].toInt() and 0xFF) or
+                    ((data[8].toInt() and 0xFF) shl 8)
+
+        Log.d(
+            "BLE",
+            "[$deviceName] Belt Battery: " +
+                    "level=${"%.2f".format(chargeLevel)}%, " +
+                    "status=$batteryStatus, " +
+                    "ttfe=${"%.1f".format(ttfe)} ms, " +
+                    "current=${currentMa} mA, " +
+                    "voltage=${voltageMv} mV"
+        )
+
+        handler.post {
+            informationListener?.onBatteryUpdate(
+                batteryStatus,
+                chargeLevel
+            )
+        }
+    }
+    private fun parseBraceletNotification(data: ByteArray) {
+
+        // Battery:
+        // 8B 02 [charge_state] [battery_level]
+        if (data.size >= 4 &&
+            data[0].toInt() and 0xFF == 0x8B
+        ) {
+            val chargeState = data[2].toInt() and 0xFF
+            val batteryLevel = data[3].toInt() and 0xFF
+
+            Log.d(
+                "BLE",
+                "[$deviceName] Bracelet Battery: $batteryLevel%, state=$chargeState"
+            )
+
+            handler.post {
+                informationListener?.onBatteryUpdate(
+                    chargeState,
+                    batteryLevel.toFloat()
+                )
+            }
+        }
+
+        // Firmware:
+        // 86 04 [variant] [major] [minor] [protocol]
+        if (data.size >= 6 &&
+            data[0].toInt() and 0xFF == 0x86
+        ) {
+            val major = data[3].toInt() and 0xFF
+            val minor = data[4].toInt() and 0xFF
+            val protocol = data[5].toInt() and 0xFF
+
+            Log.d(
+                "BLE",
+                "[$deviceName] Bracelet Firmware: $major.$minor.$protocol"
+            )
+
+            handler.post {
+                informationListener?.onFirmwareUpdate(
+                    "$major.$minor.$protocol"
+                )
+            }
+        }
+    }
     private fun restoreBraceletIntensity() {
         val prefs = context.getSharedPreferences(
             "FullIntensityPrefs",
@@ -524,7 +890,7 @@ class BleManager(private val context: Context) {
 
                     Log.d(
                         "BLE",
-                        "[$deviceName] Pattern feedback stopped after 200ms"
+                        "[$deviceName] Pattern feedback stopped after 600ms"
                     )
                 }
             }, previewDuration)

@@ -15,7 +15,8 @@ from feedback_devices.adapters.bracelet_protocol import (
     send_command,
 )
 
-from pybracelet import (VIB_PATTERN_SINGLE, VIB_PATTERN_MULTI, VIB_PATTERN_SEQ, MODE_APPLICATION)
+from pybracelet import (MOTOR_LEFT, MOTOR_DOWN, MOTOR_RIGHT, MOTOR_TOP_FRONT, MOTOR_TOP, MOTOR_TOP_BACK,
+                        VIB_PATTERN_SINGLE, VIB_PATTERN_MULTI, VIB_PATTERN_SEQ, MODE_APPLICATION)
 
 class BraceletAdapter(FeedbackDevice):
     DISTANCE_THRESHOLD_CM = 70.0
@@ -322,9 +323,7 @@ class BraceletAdapter(FeedbackDevice):
             or not self._connected
         ):
             return
-
-        from pybracelet import (MOTOR_LEFT, MOTOR_DOWN, MOTOR_RIGHT, MOTOR_TOP_FRONT, MOTOR_TOP, MOTOR_TOP_BACK)
-
+        
         patterns = {
             'grasped': {
                 'motors': [MOTOR_RIGHT, MOTOR_LEFT, MOTOR_DOWN],
@@ -436,36 +435,20 @@ class BraceletAdapter(FeedbackDevice):
         }
 
     # HELPERS
-    def _find_bbox(
-        self,
-        detections: list,
-        class_ids: list,
-    ) -> Optional[list]:
-
+    def _find_bbox(self, detections: list, class_ids: list) -> Optional[list]:
         for det in detections:
             if det[5] in class_ids:
                 return det[:4]
 
         return None
 
-    def _calculate_angle(
-        self,
-        hand_bbox: list,
-        target_bbox: list,
-    ) -> float:
-
+    def _calculate_angle(self, hand_bbox: list, target_bbox: list) -> float:
         dx = target_bbox[0] - hand_bbox[0]
         dy = target_bbox[1] - hand_bbox[1]
 
         return (90 + math.degrees(math.atan2(dy, dx))) % 360
 
-    def _send_navigation_command(
-        self,
-        angle_deg: float,
-    ) -> None:
-
-        from pybracelet import (MOTOR_LEFT, MOTOR_DOWN, MOTOR_RIGHT, MOTOR_TOP)
-
+    def _send_navigation_command(self, angle_deg: float) -> None:
         angle = angle_deg % 360
         bracelet_roll = angle
 

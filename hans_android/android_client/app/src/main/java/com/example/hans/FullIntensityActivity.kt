@@ -10,6 +10,8 @@ import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import android.widget.ProgressBar
 import android.util.Log
+import android.view.ViewGroup
+import androidx.core.content.ContextCompat
 import org.json.JSONObject
 import okhttp3.Call
 import okhttp3.Callback
@@ -38,6 +40,7 @@ class FullIntensityActivity : AppCompatActivity() {
     private lateinit var topBackProgress: ProgressBar
     private lateinit var beltValue : TextView
     private lateinit var beltProgress: ProgressBar
+    private lateinit var bottomNav: BottomNavigationView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -59,9 +62,11 @@ class FullIntensityActivity : AppCompatActivity() {
         beltValue = findViewById(R.id.beltValue)
         beltProgress = findViewById(R.id.beltProgress)
 
-        val bottomNav = findViewById<BottomNavigationView>(R.id.bottomNavigation)
-
+        bottomNav = findViewById(R.id.bottomNavigation)
         bottomNav.selectedItemId = R.id.menu_setting
+        bottomNav.post {
+            updateBottomNavBackground(R.id.menu_setting)
+        }
         bottomNav.setOnItemSelectedListener { item ->
             when (item.itemId) {
 
@@ -245,5 +250,45 @@ class FullIntensityActivity : AppCompatActivity() {
             }
         })
     }
+    private fun updateBottomNavBackground(page: Int) {
 
+        val menuView = bottomNav.getChildAt(0) as ViewGroup
+
+        val home = menuView.getChildAt(0)
+        val camera = menuView.getChildAt(1)
+        val setting = menuView.getChildAt(2)
+
+        val rectangle = ContextCompat.getDrawable(this, R.drawable.bottom_rectangle)
+        val rectangleSelected = ContextCompat.getDrawable(this, R.drawable.bottom_rectangle_selected)
+        val topLeft = ContextCompat.getDrawable(this, R.drawable.bottom_top_left)
+        val topLeftSelected = ContextCompat.getDrawable(this, R.drawable.bottom_top_left_selected)
+        val topRight = ContextCompat.getDrawable(this, R.drawable.bottom_top_right)
+        val topRightSelected = ContextCompat.getDrawable(this, R.drawable.bottom_top_right_selected)
+
+        when (page) {
+            // HOME
+            R.id.menu_home -> {
+
+                home.background = rectangleSelected
+                camera.background = topLeft
+                setting.background = rectangle
+            }
+
+            // CAMERA
+            R.id.menu_camera -> {
+
+                home.background = topRight
+                camera.background = rectangleSelected
+                setting.background = topLeft
+            }
+
+            // SETTINGS
+            R.id.menu_setting -> {
+
+                home.background = rectangle
+                camera.background = topRight
+                setting.background = rectangleSelected
+            }
+        }
+    }
 }

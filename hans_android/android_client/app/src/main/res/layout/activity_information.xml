@@ -5,17 +5,17 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/white">
+    android:background="?android:attr/colorBackground">
 
     <!-- Title -->
     <TextView
-        android:id="@+id/textPattern"
+        android:id="@+id/textDeviceInformation"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="70dp"
         android:layout_marginStart="40dp"
         android:text="@string/information"
-        android:textColor="@color/black"
+        android:textColor="@color/text_primary"
         android:textSize="26sp"
         android:textStyle="bold"
         app:layout_constraintStart_toStartOf="parent"
@@ -28,132 +28,355 @@
         android:layout_height="wrap_content"
         android:text="@string/battery_firmware"
         android:textSize="16sp"
-        android:textColor="#666666"
+        android:textColor="@color/text_secondary"
         android:layout_marginStart="40dp"
         android:layout_marginTop="8dp"
-        app:layout_constraintTop_toBottomOf="@id/textPattern"
+        app:layout_constraintTop_toBottomOf="@id/textDeviceInformation"
         app:layout_constraintStart_toStartOf="parent"/>
 
 
-    <!-- Card Battery -->
+    <!-- Bracelet Card -->
     <com.google.android.material.card.MaterialCardView
-        android:id="@+id/cardBattery"
+        android:id="@+id/cardBracelet"
         android:layout_width="0dp"
-        android:layout_height="120dp"
-        android:layout_marginStart="40dp"
-        android:layout_marginEnd="35dp"
+        android:layout_height="190dp"
+        android:layout_marginStart="20dp"
         android:layout_marginTop="50dp"
-        app:cardElevation="0dp"
-        app:layout_constraintTop_toBottomOf="@id/subtitle"
+        android:layout_marginEnd="20dp"
+        app:cardCornerRadius="12dp"
+        app:cardBackgroundColor="@color/card_fill"
+        app:strokeColor="@color/border"
+        app:strokeWidth="2dp"
+        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
+        app:layout_constraintTop_toBottomOf="@id/subtitle">
 
-        <RelativeLayout
-            android:background="@drawable/bg_outline"
-            android:layout_width="match_parent"
-            android:layout_height="120dp"
-            android:padding="16dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:layout_marginStart="16dp"
-                android:layout_marginEnd="10dp"
-                android:gravity="center_vertical"
-                android:orientation="vertical">
-
-                <TextView
-                    android:id="@+id/battery"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/battery"
-                    android:textSize="18sp"
-                    android:textStyle="bold"
-                    android:textColor="@android:color/black"/>
-
-                <TextView
-                    android:id="@+id/info_battery_level"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/info_battery_level"
-                    android:textColor="#666666"
-                    android:layout_marginTop="10dp"
-                    app:layout_constraintTop_toBottomOf="@id/battery"
-                    android:textSize="15sp" />
-
-                <TextView
-                    android:id="@+id/info_battery_state"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/info_battery_state"
-                    android:textColor="#666666"
-                    android:layout_marginTop="10dp"
-                    app:layout_constraintTop_toBottomOf="@id/info_battery_level"
-                    android:textSize="15sp" />
-            </LinearLayout>
-        </RelativeLayout>
-    </com.google.android.material.card.MaterialCardView>
-
-    <!-- Card Firmware-->
-    <com.google.android.material.card.MaterialCardView
-        android:id="@+id/cardFirmware"
-        android:layout_width="0dp"
-        android:layout_height="100dp"
-        android:layout_marginStart="40dp"
-        android:layout_marginEnd="35dp"
-        android:layout_marginTop="30dp"
-        app:cardElevation="0dp"
-        app:layout_constraintTop_toBottomOf="@id/cardBattery"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
-
-        <RelativeLayout
-            android:background="@drawable/bg_outline"
+        <androidx.constraintlayout.widget.ConstraintLayout
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:padding="16dp">
+            android:padding="20dp">
 
-            <LinearLayout
-                android:layout_width="match_parent"
+            <!-- DEVICE ICON -->
+            <ImageView
+                android:id="@+id/iconBracelet"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="@drawable/bg_green_solid"
+                android:padding="12dp"
+                android:src="@drawable/ic_bracelet"
+                app:tint="@color/icon"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+            <!-- DEVICE NAME -->
+            <TextView
+                android:id="@+id/bracelet"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="16dp"
-                android:layout_marginEnd="10dp"
-                android:layout_centerVertical="true"
-                android:orientation="vertical">
+                android:layout_marginStart="14dp"
+                android:text="@string/bracelet"
+                android:textColor="@color/text_primary"
+                android:textSize="22sp"
+                android:textStyle="bold"
+                app:layout_constraintBottom_toBottomOf="@id/iconBracelet"
+                app:layout_constraintStart_toEndOf="@id/iconBracelet"
+                app:layout_constraintTop_toTopOf="@id/iconBracelet" />
 
-                <TextView
-                    android:id="@+id/firmware"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/firmware"
-                    android:textSize="18sp"
-                    android:textStyle="bold"
-                    android:textColor="@android:color/black"/>
+            <!-- BATTERY LEVEL ICON -->
+            <ImageView
+                android:id="@+id/iconBraceletBattery"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@drawable/ic_battery"
+                app:tint="@color/selected_icon"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@id/iconBracelet"
+                android:layout_marginTop="18dp" />
 
-                <TextView
-                    android:id="@+id/info_firmware"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/info_firmware"
-                    android:textColor="#666666"
-                    android:layout_marginTop="10dp"
-                    app:layout_constraintTop_toBottomOf="@id/firmware"
-                    android:textSize="15sp" />
-            </LinearLayout>
-        </RelativeLayout>
+            <!-- BATTERY LABEL -->
+            <TextView
+                android:id="@+id/braceletBatteryLabel"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:text="@string/info_battery_level"
+                android:textColor="@color/text_secondary"
+                android:textSize="18sp"
+                app:layout_constraintBottom_toBottomOf="@id/iconBraceletBattery"
+                app:layout_constraintStart_toEndOf="@id/iconBraceletBattery"
+                app:layout_constraintTop_toTopOf="@id/iconBraceletBattery" />
+
+            <!-- BATTERY VALUE -->
+            <TextView
+                android:id="@+id/info_bracelet_battery_level"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/info_percentage"
+                android:textColor="@color/selected_icon"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                app:layout_constraintBottom_toBottomOf="@id/iconBraceletBattery"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toTopOf="@id/iconBraceletBattery" />
+
+
+            <!-- BATTERY STATUS ICON -->
+            <ImageView
+                android:id="@+id/iconBraceletState"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@drawable/ic_bolt"
+                app:tint="@color/selected_icon"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@id/iconBraceletBattery"
+                android:layout_marginTop="10dp" />
+
+            <!-- BATTERY STATUS LABEL -->
+            <TextView
+                android:id="@+id/braceletStateLabel"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:text="@string/info_battery_state"
+                android:textColor="@color/text_secondary"
+                android:textSize="18sp"
+                app:layout_constraintBottom_toBottomOf="@id/iconBraceletState"
+                app:layout_constraintStart_toEndOf="@id/iconBraceletState"
+                app:layout_constraintTop_toTopOf="@id/iconBraceletState" />
+
+            <!-- BATTERY STATUS VALUE -->
+            <TextView
+                android:id="@+id/info_bracelet_battery_state"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/info_state"
+                android:textColor="@color/selected_icon"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                app:layout_constraintBottom_toBottomOf="@id/iconBraceletState"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toTopOf="@id/iconBraceletState" />
+
+
+            <!-- FIRMWARE ICON -->
+            <ImageView
+                android:id="@+id/iconBraceletFirmware"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@drawable/ic_firmware"
+                app:tint="@color/selected_icon"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@id/iconBraceletState"
+                android:layout_marginTop="10dp" />
+
+            <!-- FIRMWARE LABEL -->
+            <TextView
+                android:id="@+id/braceletFirmwareLabel"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:text="Firmware version"
+                android:textColor="@color/text_secondary"
+                android:textSize="18sp"
+                app:layout_constraintBottom_toBottomOf="@id/iconBraceletFirmware"
+                app:layout_constraintStart_toEndOf="@id/iconBraceletFirmware"
+                app:layout_constraintTop_toTopOf="@id/iconBraceletFirmware" />
+
+            <!-- FIRMWARE VALUE -->
+            <TextView
+                android:id="@+id/info_bracelet_firmware"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/info_state"
+                android:textColor="@color/selected_icon"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                app:layout_constraintBottom_toBottomOf="@id/iconBraceletFirmware"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toTopOf="@id/iconBraceletFirmware" />
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
     </com.google.android.material.card.MaterialCardView>
+
+    <!-- BELT CARD -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/cardBelt"
+        android:layout_width="0dp"
+        android:layout_height="190dp"
+        android:layout_marginStart="20dp"
+        android:layout_marginTop="30dp"
+        android:layout_marginEnd="20dp"
+        app:cardCornerRadius="12dp"
+        app:cardElevation="0dp"
+        app:cardBackgroundColor="@color/card_fill"
+        app:strokeColor="@color/border"
+        app:strokeWidth="2dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/cardBracelet">
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:padding="20dp">
+
+            <!-- ICON -->
+            <ImageView
+                android:id="@+id/iconBelt"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="@drawable/bg_green_solid"
+                android:padding="12dp"
+                android:src="@drawable/belt"
+                app:tint="@color/icon"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+            <!-- NAME -->
+            <TextView
+                android:id="@+id/belt"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="14dp"
+                android:text="@string/belt_info"
+                android:textColor="@color/text_primary"
+                android:textSize="22sp"
+                android:textStyle="bold"
+                app:layout_constraintBottom_toBottomOf="@id/iconBelt"
+                app:layout_constraintStart_toEndOf="@id/iconBelt"
+                app:layout_constraintTop_toTopOf="@id/iconBelt" />
+
+            <!-- BATTERY -->
+            <ImageView
+                android:id="@+id/iconBeltBattery"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@drawable/ic_battery"
+                app:tint="@color/selected_icon"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@id/iconBelt"
+                android:layout_marginTop="18dp" />
+
+            <TextView
+                android:id="@+id/beltBatteryLabel"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:text="@string/info_battery_level"
+                android:textColor="@color/text_secondary"
+                android:textSize="18sp"
+                app:layout_constraintBottom_toBottomOf="@id/iconBeltBattery"
+                app:layout_constraintStart_toEndOf="@id/iconBeltBattery"
+                app:layout_constraintTop_toTopOf="@id/iconBeltBattery" />
+
+            <TextView
+                android:id="@+id/info_belt_battery_level"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/info_percentage"
+                android:textColor="@color/selected_icon"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                app:layout_constraintBottom_toBottomOf="@id/iconBeltBattery"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toTopOf="@id/iconBeltBattery" />
+
+
+            <!-- STATUS -->
+            <ImageView
+                android:id="@+id/iconBeltState"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@drawable/ic_bolt"
+                app:tint="@color/selected_icon"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@id/iconBeltBattery"
+                android:layout_marginTop="10dp" />
+
+            <TextView
+                android:id="@+id/beltStateLabel"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:text="@string/info_battery_state"
+                android:textColor="@color/text_secondary"
+                android:textSize="18sp"
+                app:layout_constraintBottom_toBottomOf="@id/iconBeltState"
+                app:layout_constraintStart_toEndOf="@id/iconBeltState"
+                app:layout_constraintTop_toTopOf="@id/iconBeltState" />
+
+            <TextView
+                android:id="@+id/info_belt_battery_state"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/info_state"
+                android:textColor="@color/selected_icon"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                app:layout_constraintBottom_toBottomOf="@id/iconBeltState"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toTopOf="@id/iconBeltState" />
+
+
+            <!-- FIRMWARE -->
+            <ImageView
+                android:id="@+id/iconBeltFirmware"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@drawable/ic_firmware"
+                app:tint="@color/selected_icon"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@id/iconBeltState"
+                android:layout_marginTop="10dp" />
+
+            <TextView
+                android:id="@+id/beltFirmwareLabel"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:text="@string/info_firmware"
+                android:textColor="@color/text_secondary"
+                android:textSize="18sp"
+                app:layout_constraintBottom_toBottomOf="@id/iconBeltFirmware"
+                app:layout_constraintStart_toEndOf="@id/iconBeltFirmware"
+                app:layout_constraintTop_toTopOf="@id/iconBeltFirmware" />
+
+            <TextView
+                android:id="@+id/info_belt_firmware"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/info_state"
+                android:textColor="@color/selected_icon"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                app:layout_constraintBottom_toBottomOf="@id/iconBeltFirmware"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toTopOf="@id/iconBeltFirmware" />
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+    </com.google.android.material.card.MaterialCardView>
+
+
 
     <!-- BOTTOM NAV -->
     <com.google.android.material.bottomnavigation.BottomNavigationView
         android:id="@+id/bottomNavigation"
+        style="@style/BottomNavigationViewStyle"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:background="#4EB92B"
+        android:background="@color/app_background"
         app:menu="@menu/bottom_nav_menu"
         app:itemIconTint="@drawable/bottom_nav"
-        app:itemTextColor="@drawable/bottom_nav"
+        app:itemTextColor="@drawable/bottom_nav_text"
+        app:itemRippleColor="@color/app_background"
+        app:itemHorizontalTranslationEnabled="false"
+        app:labelVisibilityMode="labeled"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"/>
+        app:layout_constraintEnd_toEndOf="parent" />
+
+
 
 </androidx.constraintlayout.widget.ConstraintLayout>

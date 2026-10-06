@@ -9,6 +9,8 @@ import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import android.content.SharedPreferences
 import androidx.constraintlayout.widget.ConstraintLayout
+import android.view.ViewGroup
+import androidx.core.content.ContextCompat
 
 class BluetoothActivity : AppCompatActivity() {
 
@@ -35,12 +37,14 @@ class BluetoothActivity : AppCompatActivity() {
         setContentView(R.layout.activity_bluetooth)
 
         // Get singleton instances
-        braceletManager = BleManagerSingleton.getBraceletManager(this)
-        beltManager = BleManagerSingleton.getBeltManager(this)
+        braceletManager = BleManagerSingleton.getBraceletManager(applicationContext)
+        beltManager = BleManagerSingleton.getBeltManager(applicationContext)
 
-        bottomNav = findViewById(R.id.bottomNavigation)
-
+        // PREFS
         prefs = getSharedPreferences("ble_state", MODE_PRIVATE)
+
+        // UI
+        bottomNav = findViewById(R.id.bottomNavigation)
         connectBelt = findViewById(R.id.button_belt)
         connectBracelet = findViewById(R.id.button_bracelet)
 
@@ -50,12 +54,28 @@ class BluetoothActivity : AppCompatActivity() {
         beltBluetooth = findViewById(R.id.iconLeftBelt)
         braceletBluetooth = findViewById(R.id.iconLeftBracelet)
 
-        // default UI
+        // SHOW SAVED STATE
         renderSavedState()
 
-        // 2. Start connection check
+        // BELT BUTTON
         connectBelt.setOnClickListener {
-            if (isConnecting) return@setOnClickListener
+            if (isConnecting) {
+                return@setOnClickListener
+            }
+
+            if (beltManager.isConnected()) {
+
+                Toast.makeText(
+                    this,
+                    "Belt already connected",
+                    Toast.LENGTH_SHORT
+                ).show()
+
+                saveState()
+                updateUIFromRealState()
+                return@setOnClickListener
+            }
+
             isConnecting = true
             connectBelt.isEnabled = false
 
@@ -65,11 +85,28 @@ class BluetoothActivity : AppCompatActivity() {
                 Toast.LENGTH_SHORT
             ).show()
 
-            checkBleConnection(connectBracelet = false, connectBelt = true)
+            connectBelt()
         }
 
+        // BRACELET BUTTON
         connectBracelet.setOnClickListener {
-            if (isConnecting) return@setOnClickListener
+            if (isConnecting) {
+                return@setOnClickListener
+            }
+
+            if (braceletManager.isConnected()) {
+
+                Toast.makeText(
+                    this,
+                    "Bracelet already connected",
+                    Toast.LENGTH_SHORT
+                ).show()
+
+                saveState()
+                updateUIFromRealState()
+                return@setOnClickListener
+            }
+
             isConnecting = true
             connectBracelet.isEnabled = false
 
@@ -79,10 +116,12 @@ class BluetoothActivity : AppCompatActivity() {
                 Toast.LENGTH_SHORT
             ).show()
 
-            checkBleConnection(connectBracelet = true, connectBelt = false)
+            connectBracelet()
         }
 
+        // BOTTOM NAVIGATION
         bottomNav.selectedItemId = R.id.menu_home
+        bottomNav.post {updateBottomNavBackground(R.id.menu_home) }
         bottomNav.setOnItemSelectedListener { item ->
 
             if (isConnecting) {
@@ -95,7 +134,10 @@ class BluetoothActivity : AppCompatActivity() {
             }
 
             when (item.itemId) {
-                R.id.menu_home -> true
+                R.id.menu_home -> {
+                    updateBottomNavBackground(R.id.menu_home)
+                    true
+                }
 
                 R.id.menu_camera -> {
                     startActivity(Intent(this, MainActivity::class.java))
@@ -114,92 +156,122 @@ class BluetoothActivity : AppCompatActivity() {
         }
     }
 
-    // 4. BLE Connection Logic
-    private fun checkBleConnection(connectBracelet: Boolean, connectBelt: Boolean) {
-
-        val deviceType = when {
-            connectBelt -> "belt"
-            connectBracelet -> "bracelet"
-            else -> "unknown"
-        }
+    // CONNECT BELT
+    private fun connectBelt() {
 
         Thread {
             try {
+                beltManager.connect(MAC_BELT)
+                Thread.sleep(1500)
 
-                var beltConnected = prefs.getBoolean("belt", false)
-                var braceletConnected = prefs.getBoolean("bracelet", false)
-
-                // CONNECT BELT
-                if (connectBelt) {
-                    Log.e("HANS", "Connecting BRACELET to [$MAC_BRACELET]")
-                    beltManager.connect(MAC_BELT)
-                    Thread.sleep(1500)
-
-                    beltConnected = beltManager.isConnected()
-                    Log.e("HANS", "Bracelet isConnected = $braceletConnected")
-
-                }
-
-                // CONNECT BRACELET
-                if (connectBracelet) {
-                    braceletManager.connect(MAC_BRACELET)
-                    Thread.sleep(1500)
-
-                    braceletConnected = braceletManager.isConnected()
-                }
-
-                Log.d("HANS", "✓ Bracelet: $braceletConnected, Belt: $beltConnected")
+                val connected = beltManager.isConnected()
+                Log.d("HANS", "Belt connected = $connected")
 
                 runOnUiThread {
                     isConnecting = false
+                    connectBelt.isEnabled = true
+                    saveState()
+                    updateUIFromRealState()
 
-                    // UPDATE UI
-                    updateIconFromState(beltConnected, braceletConnected)
+                    if (connected) {
+                        startActivity(
+                            Intent(this, BluetoothConnectedActivity::class.java).apply {
+                                putExtra("device_type", "belt")
+                            }
+                        )
+                        finish()
 
-                    // SAVE STATE
-                    prefs.edit()
-                        .putBoolean("belt", beltConnected)
-                        .putBoolean("bracelet", braceletConnected)
-                        .apply()
-
-                    val success = when {
-                        connectBelt -> beltConnected
-                        connectBracelet -> braceletConnected
-                        else -> false
+                    } else {
+                        startActivity(
+                            Intent(this, BluetoothNotConnectedActivity::class.java).apply {
+                                putExtra("device_type", "belt")
+                            }
+                        )
+                        finish()
                     }
-
-                    val target = if (success)
-                        BluetoothConnectedActivity::class.java
-                    else
-                        BluetoothNotConnectedActivity::class.java
-
-                    startActivity(
-                        Intent(this, target).apply {
-                            putExtra("device_type", deviceType)
-                        }
-                    )
-                    finish()
                 }
 
             } catch (e: Exception) {
+                Log.e("HANS", "Belt connection error", e)
                 runOnUiThread {
                     isConnecting = false
-
-                    startActivity(
-                        Intent(this, BluetoothNotConnectedActivity::class.java).apply {
-                            putExtra("device_type", deviceType)
-                        }
-                    )
-                    finish()
+                    connectBelt.isEnabled = true
+                    updateUIFromRealState()
                 }
             }
         }.start()
     }
 
-    // ICON UPDATE
+    // CONNECT BRACELET
+    private fun connectBracelet() {
+        Thread {
+            try {
+                braceletManager.connect(MAC_BRACELET)
+                Thread.sleep(1500)
+
+                val connected = braceletManager.isConnected()
+                Log.d("HANS", "Bracelet connected = $connected")
+
+                runOnUiThread {
+                    isConnecting = false
+                    connectBracelet.isEnabled = true
+                    saveState()
+                    updateUIFromRealState()
+
+                    if (connected) {
+                        startActivity(
+                            Intent(this, BluetoothConnectedActivity::class.java).apply {
+                                putExtra("device_type", "bracelet")
+                            }
+                        )
+                        finish()
+
+                    } else {
+                        startActivity(
+                            Intent(
+                                this, BluetoothNotConnectedActivity::class.java).apply {
+                                putExtra("device_type", "bracelet")
+                            }
+                        )
+                        finish()
+                    }
+                }
+
+            } catch (e: Exception) {
+                Log.e("HANS", "Bracelet connection error", e)
+                runOnUiThread {
+                    isConnecting = false
+                    connectBracelet.isEnabled = true
+                    updateUIFromRealState()
+                }
+            }
+        }.start()
+    }
+
+    // SAVE STATE
+    private fun saveState() {
+        val beltConnected = beltManager.isConnected()
+        val braceletConnected = braceletManager.isConnected()
+
+        prefs.edit()
+            .putBoolean("belt", beltConnected)
+            .putBoolean("bracelet", braceletConnected)
+            .apply()
+    }
+
+    // REAL STATE
+    private fun updateUIFromRealState() {
+        updateIconFromState(
+            beltManager.isConnected(),
+            braceletManager.isConnected()
+        )
+    }
+
+    // ICON
     private fun updateIconFromState(
         beltConnected: Boolean,
-        braceletConnected: Boolean) {
+        braceletConnected: Boolean
+    ) {
 
         // BELT
         if (beltConnected) {
@@ -214,7 +286,6 @@ class BluetoothActivity : AppCompatActivity() {
 
         // BRACELET
         if (braceletConnected) {
-
             connectBracelet.setBackgroundResource(R.drawable.bg_green)
             braceletIcon.setImageResource(R.drawable.check)
             braceletBluetooth.setImageResource(R.drawable.connected)
@@ -225,23 +296,73 @@ class BluetoothActivity : AppCompatActivity() {
         }
     }
 
-    // LOAD SAVED STATE
+    // RESTORE UI
     private fun renderSavedState() {
-
         val belt = prefs.getBoolean("belt", false)
         val bracelet = prefs.getBoolean("bracelet", false)
 
         updateIconFromState(belt, bracelet)
     }
 
+    // RESUME
     override fun onResume() {
         super.onResume()
         renderSavedState()
+
+        if (
+            beltManager.isConnected() ||
+            braceletManager.isConnected()
+        ) {
+            saveState()
+            updateUIFromRealState()
+        }
     }
+
+    // DESTROY
 
     override fun onDestroy() {
         super.onDestroy()
-        // Don't disconnect here! Keep connection alive for MainActivity
-        // Only disconnect when app truly closes
+    }
+
+    private fun updateBottomNavBackground(page: Int) {
+
+        val menuView = bottomNav.getChildAt(0) as ViewGroup
+
+        val home = menuView.getChildAt(0)
+        val camera = menuView.getChildAt(1)
+        val setting = menuView.getChildAt(2)
+
+        val rectangle = ContextCompat.getDrawable(this, R.drawable.bottom_rectangle)
+        val rectangleSelected = ContextCompat.getDrawable(this, R.drawable.bottom_rectangle_selected)
+        val topLeft = ContextCompat.getDrawable(this, R.drawable.bottom_top_left)
+        val topLeftSelected = ContextCompat.getDrawable(this, R.drawable.bottom_top_left_selected)
+        val topRight = ContextCompat.getDrawable(this, R.drawable.bottom_top_right)
+        val topRightSelected = ContextCompat.getDrawable(this, R.drawable.bottom_top_right_selected)
+
+        when (page) {
+            // HOME
+            R.id.menu_home -> {
+
+                home.background = rectangleSelected
+                camera.background = topLeft
+                setting.background = rectangle
+            }
+
+            // CAMERA
+            R.id.menu_camera -> {
+
+                home.background = topRight
+                camera.background = rectangleSelected
+                setting.background = topLeft
+            }
+
+            // SETTINGS
+            R.id.menu_setting -> {
+
+                home.background = rectangle
+                camera.background = topRight
+                setting.background = rectangleSelected
+            }
+        }
     }
 }

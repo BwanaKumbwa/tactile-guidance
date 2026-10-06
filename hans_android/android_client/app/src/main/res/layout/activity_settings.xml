@@ -5,7 +5,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@android:color/white">
+    android:background="?android:attr/colorBackground">
 
     <!-- Title -->
     <TextView
@@ -14,8 +14,8 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="70dp"
         android:layout_marginStart="40dp"
-        android:text="@string/setting"
-        android:textColor="@color/black"
+        android:text="@string/settings"
+        android:textColor="@color/text_primary"
         android:textSize="26sp"
         android:textStyle="bold"
         app:layout_constraintStart_toStartOf="parent"
@@ -28,7 +28,7 @@
         android:layout_height="wrap_content"
         android:text="@string/info_setting"
         android:textSize="16sp"
-        android:textColor="#666666"
+        android:textColor="@color/text_secondary"
         android:layout_marginStart="40dp"
         android:layout_marginTop="8dp"
         app:layout_constraintTop_toBottomOf="@id/Settings"
@@ -43,7 +43,8 @@
         android:layout_marginEnd="35dp"
         android:layout_marginTop="50dp"
         app:cardCornerRadius="12dp"
-        app:strokeColor="#D9D9D9"
+        app:cardBackgroundColor="@color/card_fill"
+        app:strokeColor="@color/border"
         app:strokeWidth="2dp"
         app:layout_constraintTop_toBottomOf="@id/subtitle"
         app:layout_constraintStart_toStartOf="parent"
@@ -63,7 +64,7 @@
                 android:background="@drawable/circle_green"
                 android:padding ="15dp"
                 android:src="@drawable/intensity"
-                app:tint="@color/icon_green" />
+                app:tint="@color/icon"/>
 
 
             <LinearLayout
@@ -83,13 +84,13 @@
                     android:text="@string/intensity"
                     android:textSize="22sp"
                     android:textStyle="bold"
-                    android:textColor="@android:color/black"/>
+                    android:textColor="@color/text_primary"/>
 
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="@string/info_intensity"
-                    android:textColor="#666666"
+                    android:textColor="@color/text_secondary"
                     android:layout_marginTop="10dp"
                     app:layout_constraintTop_toBottomOf="@id/intensity"
                     android:textSize="15sp"  />
@@ -101,6 +102,7 @@
                 android:layout_height="24dp"
                 android:layout_alignParentEnd="true"
                 android:layout_centerVertical="true"
+                app:tint="@color/border"
                 android:src="@drawable/ic_forward"/>
 
         </RelativeLayout>
@@ -116,7 +118,8 @@
         android:layout_marginEnd="35dp"
         android:layout_marginTop="30dp"
         app:cardCornerRadius="12dp"
-        app:strokeColor="#D9D9D9"
+        app:cardBackgroundColor="@color/card_fill"
+        app:strokeColor="@color/border"
         app:strokeWidth="2dp"
         app:layout_constraintTop_toBottomOf="@id/cardIntensity"
         app:layout_constraintStart_toStartOf="parent"
@@ -136,7 +139,7 @@
                 android:background="@drawable/circle_green"
                 android:padding ="15dp"
                 android:src="@drawable/pattern"
-                app:tint="@color/icon_green" />
+                app:tint="@color/icon"/>
 
             <LinearLayout
                 android:layout_width="wrap_content"
@@ -155,13 +158,13 @@
                     android:text="@string/pattern"
                     android:textSize="22sp"
                     android:textStyle="bold"
-                    android:textColor="@android:color/black"/>
+                    android:textColor="@color/text_primary"/>
 
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="@string/info_pattern"
-                    android:textColor="#666666"
+                    android:textColor="@color/text_secondary"
                     android:layout_marginTop="10dp"
                     app:layout_constraintTop_toBottomOf="@id/signal_pattern"
                     android:textSize="15sp"  />
@@ -173,6 +176,7 @@
                 android:layout_height="24dp"
                 android:layout_alignParentEnd="true"
                 android:layout_centerVertical="true"
+                app:tint="@color/border"
                 android:src="@drawable/ic_forward"/>
 
         </RelativeLayout>
@@ -187,7 +191,8 @@
         android:layout_marginEnd="35dp"
         android:layout_marginTop="30dp"
         app:cardCornerRadius="12dp"
-        app:strokeColor="#D9D9D9"
+        app:cardBackgroundColor="@color/card_fill"
+        app:strokeColor="@color/border"
         app:strokeWidth="2dp"
         app:layout_constraintTop_toBottomOf="@id/cardPattern"
         app:layout_constraintStart_toStartOf="parent"
@@ -207,7 +212,7 @@
                 android:background="@drawable/circle_green"
                 android:padding ="15dp"
                 android:src="@drawable/information"
-                app:tint="@color/icon_green" />
+                app:tint="@color/icon"/>
 
             <LinearLayout
                 android:layout_width="wrap_content"
@@ -226,13 +231,14 @@
                     android:text="@string/information"
                     android:textSize="22sp"
                     android:textStyle="bold"
-                    android:textColor="@android:color/black"/>
+                    android:textColor="@color/text_primary"/>
 
                 <TextView
+                    android:id="@+id/info_sequence"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="@string/battery_firmware"
-                    android:textColor="#666666"
+                    android:textColor="@color/text_secondary"
                     android:layout_marginTop="10dp"
                     app:layout_constraintTop_toBottomOf="@id/device_information"
                     android:textSize="15sp"  />
@@ -244,6 +250,7 @@
                 android:layout_height="24dp"
                 android:layout_alignParentEnd="true"
                 android:layout_centerVertical="true"
+                app:tint="@color/border"
                 android:src="@drawable/ic_forward"/>
 
         </RelativeLayout>
@@ -252,14 +259,19 @@
     <!-- BOTTOM NAV -->
     <com.google.android.material.bottomnavigation.BottomNavigationView
         android:id="@+id/bottomNavigation"
+        style="@style/BottomNavigationViewStyle"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:background="#4EB92B"
+        android:background="@color/app_background"
         app:menu="@menu/bottom_nav_menu"
         app:itemIconTint="@drawable/bottom_nav"
-        app:itemTextColor="@drawable/bottom_nav"
+        app:itemTextColor="@drawable/bottom_nav_text"
+        app:itemRippleColor="@color/app_background"
+        app:itemHorizontalTranslationEnabled="false"
+        app:labelVisibilityMode="labeled"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"/>
+        app:layout_constraintEnd_toEndOf="parent" />
+
 
 </androidx.constraintlayout.widget.ConstraintLayout>

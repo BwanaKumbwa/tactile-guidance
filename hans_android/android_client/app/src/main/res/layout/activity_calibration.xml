@@ -4,7 +4,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/white">
+    android:background="?android:attr/colorBackground">
 
     <!-- TITLE -->
     <TextView
@@ -14,7 +14,7 @@
         android:layout_marginTop="70dp"
         android:layout_marginStart="40dp"
         android:text="@string/calibration"
-        android:textColor="@color/black"
+        android:textColor="@color/text_primary"
         android:textSize="26sp"
         android:textStyle="bold"
         app:layout_constraintStart_toStartOf="parent"
@@ -28,7 +28,7 @@
         android:text="@string/direction"
         android:textSize="24sp"
         android:textStyle="bold"
-        android:textColor="#000"
+        android:textColor="@color/text_primary"
         app:layout_constraintTop_toBottomOf="@id/calibrationTitle"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
@@ -42,8 +42,8 @@
         android:indeterminate="false"
         app:indicatorSize="260dp"
         app:trackThickness="16dp"
-        app:indicatorColor="#4CAF50"
-        app:trackColor="#EAF3DE"
+        app:indicatorColor="@color/indicator"
+        app:trackColor="@color/progress_bar"
         app:layout_constraintTop_toBottomOf="@id/direction"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
@@ -57,7 +57,7 @@
         android:text="@string/zero"
         android:textSize="64sp"
         android:textStyle="bold"
-        android:textColor="#000"
+        android:textColor="@color/selected_icon"
         app:layout_constraintTop_toTopOf="@id/circularProgress"
         app:layout_constraintBottom_toBottomOf="@id/circularProgress"
         app:layout_constraintStart_toStartOf="@id/circularProgress"
@@ -70,7 +70,7 @@
         android:layout_height="wrap_content"
         android:text="@string/hundred"
         android:textSize="16sp"
-        android:textColor="#666"
+        android:textColor="@color/text_secondary"
         app:layout_constraintTop_toBottomOf="@id/calibrationValue"
         app:layout_constraintStart_toStartOf="@id/circularProgress"
         app:layout_constraintEnd_toEndOf="@id/circularProgress"/>
@@ -92,7 +92,7 @@
             android:layout_width="30dp"
             android:layout_height="30dp"
             android:src="@android:drawable/ic_lock_silent_mode_off"
-            app:tint="@color/black"/>
+            app:tint="@color/indicator"/>
 
         <TextView
             android:layout_width="280dp"
@@ -101,7 +101,7 @@
             android:layout_marginEnd="8dp"
             android:text="@string/volume"
             android:textSize="17sp"
-            android:textColor="@color/black"
+            android:textColor="@color/text_secondary"
             android:lineSpacingMultiplier="1.5"/>
 
     </LinearLayout>
@@ -112,10 +112,10 @@
         android:layout_width="0dp"
         android:layout_height="70dp"
         android:text="@string/set_default"
-        android:textStyle="bold"
         android:textSize="20sp"
-        android:textColor="@android:color/black"
-        android:background="@drawable/bg_default"
+        app:backgroundTint="@null"
+        android:textColor="@color/button_text"
+        android:background="@drawable/bg_green_selected"
         android:layout_marginHorizontal="24dp"
         android:layout_marginBottom="30dp"
         app:layout_constraintBottom_toTopOf="@id/bottomNavigation"
@@ -125,14 +125,20 @@
     <!-- BOTTOM NAV -->
     <com.google.android.material.bottomnavigation.BottomNavigationView
         android:id="@+id/bottomNavigation"
+        style="@style/BottomNavigationViewStyle"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:background="#4EB92B"
+        android:background="@color/app_background"
         app:menu="@menu/bottom_nav_menu"
         app:itemIconTint="@drawable/bottom_nav"
-        app:itemTextColor="@drawable/bottom_nav"
+        app:itemTextColor="@drawable/bottom_nav_text"
+        app:itemRippleColor="@color/app_background"
+        app:itemHorizontalTranslationEnabled="false"
+        app:labelVisibilityMode="labeled"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"/>
+        app:layout_constraintEnd_toEndOf="parent" />
+
+
 
 </androidx.constraintlayout.widget.ConstraintLayout>
