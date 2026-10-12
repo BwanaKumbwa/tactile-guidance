@@ -50,11 +50,11 @@
     <string name="info_signal">Choose how the motors pulse.</string>
     <string name="info_signal2">Choose a pattern to feel it before saving it.</string>
     <string name="single">Single motor continuous</string>
-    <string name="info_single">One continuous vibration from one vibromotor.</string>
+    <string name="info_single">4 Directions\nOne vibromotor vibrate continuously.</string>
     <string name="multi">Multi motor continuous</string>
-    <string name="info_multi">Several motors vibrate together at once.</string>
+    <string name="info_multi">8 Directions\nMultiple vibromotors vibrate simultaneously.</string>
     <string name="sequence">Multi motor sequence</string>
-    <string name="info_sequence">Several motors vibrate one after another in order.</string>
+    <string name="info_sequence">8 Directions\nMultiple vibromotors vibrate one after another in order.</string>
 
     <!-- INFORMATION -->
     <string name="bracelet">Bracelet Information</string>

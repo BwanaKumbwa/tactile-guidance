@@ -31,6 +31,8 @@ class BluetoothActivity : AppCompatActivity() {
     private lateinit var braceletIcon: ImageView
     private lateinit var prefs: SharedPreferences
     private var isConnecting = false
+    private var isReconnectingBracelet = false
+    private var isReconnectingBelt = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -296,6 +298,102 @@ class BluetoothActivity : AppCompatActivity() {
         }
     }
 
+    private fun checkAndReconnect() {
+
+        val braceletSaved = prefs.getBoolean("bracelet", false)
+        val beltSaved = prefs.getBoolean("belt", false)
+
+        if (braceletSaved && !braceletManager.isConnected()) {
+            reconnectBracelet()
+        }
+
+        if (beltSaved && !beltManager.isConnected()) {
+            reconnectBelt()
+        }
+    }
+
+    // RECONNECT BRACELET
+
+    private fun reconnectBracelet() {
+        if (isReconnectingBracelet) return
+        if (braceletManager.isConnected()) return
+
+        isReconnectingBracelet = true
+
+        Thread {
+            try {
+                braceletManager.connect(MAC_BRACELET)
+                Thread.sleep(2000)
+                val connected = braceletManager.isConnected()
+
+                runOnUiThread {
+                    isReconnectingBracelet = false
+
+                    if (connected) {
+                        prefs.edit()
+                            .putBoolean("bracelet", true)
+                            .apply()
+
+                        updateUIFromRealState()
+
+                        braceletManager.requestBattery()
+                        braceletManager.requestFirmware()
+                    } else {
+                        updateUIFromRealState()
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("HANS", "Bracelet reconnect error", e)
+
+                runOnUiThread {
+                    isReconnectingBracelet = false
+                    updateUIFromRealState()
+                }
+            }
+        }.start()
+    }
+
+    // RECONNECT BELT
+
+    private fun reconnectBelt() {
+        if (isReconnectingBelt) return
+        if (beltManager.isConnected()) return
+
+        isReconnectingBelt = true
+
+        Thread {
+            try {
+                beltManager.connect(MAC_BELT)
+                Thread.sleep(2000)
+                val connected = beltManager.isConnected()
+
+                runOnUiThread {
+                    isReconnectingBelt = false
+
+                    if (connected) {
+                        prefs.edit()
+                            .putBoolean("belt", true)
+                            .apply()
+
+                        updateUIFromRealState()
+
+                        beltManager.requestBattery()
+                        beltManager.requestFirmware()
+                    } else {
+                        updateUIFromRealState()
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("HANS", "Belt reconnect error", e)
+
+                runOnUiThread {
+                    isReconnectingBelt = false
+                    updateUIFromRealState()
+                }
+            }
+        }.start()
+    }
+
     // RESTORE UI
     private fun renderSavedState() {
         val belt = prefs.getBoolean("belt", false)
@@ -307,19 +405,11 @@ class BluetoothActivity : AppCompatActivity() {
     // RESUME
     override fun onResume() {
         super.onResume()
-        renderSavedState()
-
-        if (
-            beltManager.isConnected() ||
-            braceletManager.isConnected()
-        ) {
-            saveState()
-            updateUIFromRealState()
-        }
+        updateUIFromRealState()
+        checkAndReconnect()
     }
 
     // DESTROY
-
     override fun onDestroy() {
         super.onDestroy()
     }
