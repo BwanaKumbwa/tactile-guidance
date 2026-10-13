@@ -22,14 +22,12 @@ if (envFile.exists()) {
 
 // Create a task that tracks .env as input
 val envConfigTask = tasks.register("generateEnvConfig") {
-    // Declare .env as input (Gradle will track changes)
     inputs.file(envFile)
-    
-    // Output is a generated properties file
+
     val outputDir = layout.buildDirectory.dir("generated/env")
     val outputFile = outputDir.map { it.file("env.properties") }
     outputs.file(outputFile)
-    
+
     doLast {
         val output = outputFile.get().asFile
         output.parentFile.mkdirs()
@@ -40,14 +38,16 @@ val envConfigTask = tasks.register("generateEnvConfig") {
 
 android {
     namespace = "com.example.hans"
-    compileSdk {
-        version = release(36) {
-            minorApiLevel = 1
-        }
-    }
+    compileSdk = 36
 
     buildFeatures {
         buildConfig = true
+    }
+
+    // CRITICAL: Prevent Gradle from compressing .tflite files in assets,
+    // which allows direct memory-mapping (mmap) without RAM duplication.
+    androidResources {
+        noCompress += listOf("tflite")
     }
 
     defaultConfig {
@@ -59,16 +59,19 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // Read directly from envMap (not local.properties)
         buildConfigField("String", "SERVER_IP", "\"${envMap["SERVER_IP"] ?: ""}\"")
         buildConfigField("String", "MAC_BRACELET", "\"${envMap["MAC_BRACELET"] ?: ""}\"")
         buildConfigField("String", "MAC_BELT", "\"${envMap["MAC_BELT"] ?: ""}\"")
         buildConfigField("String", "WAKE_WORD", "\"${envMap["WAKE_WORD"] ?: ""}\"")
+
+        buildConfigField("String", "API_URL", "\"${envMap["API_URL"] ?: ""}\"")
+        buildConfigField("String", "API_KEY", "\"${envMap["API_KEY"] ?: ""}\"")
+        buildConfigField("String", "LLM_MODEL", "\"${envMap["LLM_MODEL"] ?: "openai/gpt-oss-120b"}\"")
     }
 
     // Flavor configuration
     flavorDimensions.add("arcore")
-    
+
     productFlavors {
         create("withArcore") {
             dimension = "arcore"
@@ -91,13 +94,13 @@ android {
             )
         }
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
 }
 
-// Hook envConfigTask into build lifecycle
 tasks.named("preBuild") {
     dependsOn(envConfigTask)
 }
@@ -117,12 +120,19 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
 
-    // --- CameraX (needed for BOTH flavors) ---
-    val camerax_version = "1.3.1"
-    implementation("androidx.camera:camera-core:${camerax_version}")
-    implementation("androidx.camera:camera-camera2:${camerax_version}")
-    implementation("androidx.camera:camera-lifecycle:${camerax_version}")
-    implementation("androidx.camera:camera-view:${camerax_version}")
+    // --- CameraX ---
+    val cameraxVersion = "1.3.1"
+    implementation("androidx.camera:camera-core:$cameraxVersion")
+    implementation("androidx.camera:camera-camera2:$cameraxVersion")
+    implementation("androidx.camera:camera-lifecycle:$cameraxVersion")
+    implementation("androidx.camera:camera-view:$cameraxVersion")
+
+    // --- Google LiteRT (Modern TFLite runtime, 100% AGP 9.0+ compatible) ---
+    val litertVersion = "1.0.1"
+    implementation("com.google.ai.edge.litert:litert:$litertVersion")
+    implementation("com.google.ai.edge.litert:litert-gpu:$litertVersion")
+    implementation("com.google.ai.edge.litert:litert-api:$litertVersion")
+    implementation("com.google.ai.edge.litert:litert-gpu-api:$litertVersion")
 
     // --- Networking (OkHttp) ---
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
@@ -131,9 +141,5 @@ dependencies {
     implementation("org.json:json:20210307")
 
     // ===== Flavor-specific dependencies =====
-    // ARCore only for withArcore flavor
     "withArcoreImplementation"("com.google.ar:core:1.41.0")
-    
-    // OpenGL for withArcore (needed for GLSurfaceView)
-    "withArcoreImplementation"("androidx.core:core-ktx:1.12.0")
 }
