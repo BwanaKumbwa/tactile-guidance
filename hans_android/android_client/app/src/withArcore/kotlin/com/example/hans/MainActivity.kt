@@ -29,6 +29,7 @@ import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.example.hans.ai.LocalHansBrain
+import com.example.hans.haptics.HapticArbitrator
 import com.example.hans.ml.BoundingBoxOverlay
 import com.example.hans.ml.CameraImageConverter
 import com.example.hans.ml.CvPipelineSingleton
@@ -80,13 +81,14 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
     private var touchDownTime = 0L
     private val MIN_HOLD_DURATION_MS = 400L
 
-    // ARCore Session & OpenGL
+    // ARCore Session & OpenGL State
     private var arSession: Session? = null
     private val cameraRenderer = CameraRenderer()
     @Volatile private var isTextureSet = false
+    @Volatile private var isActivityPaused = false
 
     // =================================================================
-    // ON-DEVICE CV & TRACKING (Application-Level Singleton)
+    // ON-DEVICE CV & TRACKING
     // =================================================================
     private var dualPipeline: DualYoloPipeline? = null
     private val tracker: SortTracker get() = CvPipelineSingleton.tracker
@@ -101,7 +103,10 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
     // On-Device AI Brain (Direct LLM Client)
     private var localBrain: LocalHansBrain? = null
 
-    // Networking (Optional server telemetry bridge)
+    // Local Haptic Guidance Arbitrator
+    private lateinit var hapticArbitrator: HapticArbitrator
+
+    // Networking
     private val client = OkHttpClient()
     private var webSocket: WebSocket? = null
 
@@ -141,25 +146,24 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
             updateBottomNavBarColor(false)
         }
 
+        // Clean Tab Switching: Keep MainActivity alive in background to prevent camera disconnects
         bottomNav.setOnItemSelectedListener { item ->
             when (item.itemId) {
                 R.id.menu_home -> {
-                    stopBraceletVibration()
+                    stopAllHaptics()
                     val intent = Intent(this, BluetoothActivity::class.java).apply {
-                        addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                        flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
                     }
                     startActivity(intent)
-                    finish()
                     true
                 }
                 R.id.menu_camera -> true
                 R.id.menu_setting -> {
-                    stopBraceletVibration()
+                    stopAllHaptics()
                     val intent = Intent(this, SettingsActivity::class.java).apply {
-                        addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                        flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
                     }
                     startActivity(intent)
-                    finish()
                     true
                 }
                 else -> false
@@ -177,13 +181,16 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
         braceletManager = BleManagerSingleton.getBraceletManager(this)
         beltManager = BleManagerSingleton.getBeltManager(this)
 
-        // Warm up CV models in background thread via Singleton
+        // Local Haptic Arbitrator
+        hapticArbitrator = HapticArbitrator(braceletManager, beltManager)
+
+        // Warm up CV models via Singleton
         initLocalCvEngine()
 
-        // Initialize On-Device LLM Brain with credentials from BuildConfig
+        // Initialize On-Device LLM Brain
         initLocalBrain()
 
-        // Request permissions if not granted
+        // Permissions
         if (allPermissionsGranted()) {
             initSystem()
         } else {
@@ -192,7 +199,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
 
         tts = TextToSpeech(this, this)
 
-        // Root layout tap handles interrupting TTS speech
         val rootLayout = findViewById<ConstraintLayout>(R.id.rootLayout)
         rootLayout.setBackgroundColor(Color.BLACK)
 
@@ -209,6 +215,13 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
             overlayParams.height = targetHeight
             overlayView.layoutParams = overlayParams
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        bottomNav.selectedItemId = R.id.menu_camera
+        updateBottomNavBackground(R.id.menu_camera)
     }
 
     private fun setupOverlayView() {
@@ -234,7 +247,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                 runOnUiThread {
                     tvStatus.text = "Local CV Ready [${dualPipeline?.activeHardware}]"
                 }
-                Log.d("HANS", "✓ DualYoloPipeline obtained from Singleton.")
             } catch (e: Exception) {
                 Log.e("HANS", "Failed to obtain local CV pipeline", e)
             }
@@ -248,11 +260,9 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
             apiKey = BuildConfig.API_KEY,
             model = BuildConfig.LLM_MODEL,
             hardwareStatusProvider = {
-                // Live query of BLE connection singletons
                 Pair(braceletManager.isConnected(), beltManager.isConnected())
             }
         )
-        Log.i("HANS", "LocalHansBrain initialized with live hardware providers.")
     }
 
     private fun initSystem() {
@@ -262,12 +272,12 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
     }
 
     // =================================================================
-    // LOCAL CV + ARCORE DEPTH PIPELINE (Non-Blocking)
+    // LOCAL CV + ARCORE DEPTH + LOCAL HAPTIC PIPELINE (Non-Blocking)
     // =================================================================
     private fun triggerLocalInferenceIfIdle(frame: Frame) {
+        if (isActivityPaused) return
         val pipeline = dualPipeline ?: return
 
-        // Drop frame if previous inference is still executing
         if (!isInferring.compareAndSet(false, true)) {
             return
         }
@@ -280,7 +290,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
             try {
                 depthImage = frame.acquireDepthImage16Bits()
             } catch (e: Exception) {
-                // Depth initializing or moving phone
+                // Depth initializing
             }
 
             val rgbImgRef = rgbImage
@@ -288,15 +298,19 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
 
             cvExecutor.execute {
                 try {
-                    val portraitBitmap = CameraImageConverter.yuvToPortraitBitmap(rgbImgRef, 640)
+                    if (isActivityPaused) return@execute
 
-                    // 1. Dual-Model Concurrent Inference
+                    val portraitBitmap = CameraImageConverter.yuvToPortraitBitmap(rgbImgRef, 640)
+                    val bmpW = portraitBitmap.width
+                    val bmpH = portraitBitmap.height
+
+                    // 1. Dual-Model Inference
                     val result = pipeline.detect(portraitBitmap)
 
-                    // 2. Kalman Multi-Object Tracking (Consistent Track IDs)
+                    // 2. Kalman Tracking
                     val trackedDetections = tracker.update(result.mergedDetections)
 
-                    // 3. Extract 16-bit Metric Depth from ARCore
+                    // 3. Metric Depth Extraction
                     if (depthImgRef != null) {
                         DepthUtils.assignDepthToDetections(
                             depthImage = depthImgRef,
@@ -305,9 +319,32 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                         )
                     }
 
-                    // Share latest detections and bitmap with On-Device Brain
                     localBrain?.latestDetections = trackedDetections
-                    localBrain?.latestFrameBitmap = portraitBitmap
+
+                    // 4. Local Haptic Navigation
+                    val activeTarget = localBrain?.activeTarget ?: "none"
+                    val intensities = loadIntensityMap()
+
+                    val guidanceState = hapticArbitrator.updateNavigation(
+                        activeTarget = activeTarget,
+                        detections = trackedDetections,
+                        vibrationIntensities = intensities
+                    )
+
+                    if (guidanceState.isGrasped) {
+                        val graspedItem = activeTarget
+                        localBrain?.activeTarget = "none"
+                        localBrain?.targetList?.remove(graspedItem)
+                        if (graspedItem != "none") {
+                            localBrain?.graspedObjectsHistory?.add(graspedItem)
+                        }
+
+                        runOnUiThread {
+                            val msg = "Grasped $graspedItem."
+                            tvAiResponse.text = "AI: $msg"
+                            tts.speak(msg, TextToSpeech.QUEUE_FLUSH, null, "GRASP_DONE")
+                        }
+                    }
 
                     frameCounter++
                     val now = SystemClock.uptimeMillis()
@@ -317,28 +354,30 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                         lastFpsTimestamp = now
                     }
 
-                    // 4. Update Visual Overlay
+                    // 5. Update Overlay
                     runOnUiThread {
-                        overlayView.setTrackedResults(
-                            results = trackedDetections,
-                            srcWidth = portraitBitmap.width,
-                            srcHeight = portraitBitmap.height,
-                            handIdThreshold = 80
-                        )
+                        if (!isActivityPaused) {
+                            overlayView.setTrackedResults(
+                                results = trackedDetections,
+                                srcWidth = bmpW,
+                                srcHeight = bmpH,
+                                handIdThreshold = 80
+                            )
 
-                        val targetStr = localBrain?.activeTarget?.takeIf { it != "none" }?.let { " | Target: $it" } ?: ""
-                        if (!isPttRecording) {
-                            tvStatus.text = "FPS: $currentFps | Infer: ${result.inferenceTimeMs}ms | Active: ${trackedDetections.size}$targetStr"
+                            if (!isPttRecording) {
+                                val targetStr = if (activeTarget != "none") " | Target: $activeTarget [${guidanceState.activeDevice}]" else ""
+                                tvStatus.text = "FPS: $currentFps | Infer: ${result.inferenceTimeMs}ms | Active: ${trackedDetections.size}$targetStr"
+                            }
                         }
                     }
 
-                    // 5. Send lightweight telemetry to server if connected
                     sendTelemetryToServer(trackedDetections)
-
                     portraitBitmap.recycle()
+
                 } catch (e: Exception) {
                     Log.e("HANS", "Local CV frame error", e)
                 } finally {
+                    // Always close images immediately to avoid starving Camera2 HAL buffer queues
                     rgbImgRef.close()
                     depthImgRef?.close()
                     isInferring.set(false)
@@ -371,74 +410,91 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
             }
             socket.send(jsonArray.toString())
         } catch (e: Exception) {
-            // Ignore socket drop
+            // Ignore
         }
     }
 
     // =================================================================
-    // ARCORE LIFECYCLE
+    // ARCORE LIFECYCLE (Hardened Order)
     // =================================================================
     override fun onResume() {
         super.onResume()
+        isActivityPaused = false
         isTextureSet = false
-
-        val prewarmSession = ArCoreManager.resume()
-        if (prewarmSession != null) {
-            @Suppress("UNCHECKED_CAST")
-            arSession = prewarmSession as? Session
-        }
 
         if (arSession == null && allPermissionsGranted()) {
             try {
                 if (ArCoreApk.getInstance().requestInstall(this, true) == ArCoreApk.InstallStatus.INSTALLED) {
                     arSession = Session(this)
                     val config = Config(arSession)
-
                     if (arSession!!.isDepthModeSupported(Config.DepthMode.AUTOMATIC)) {
                         config.depthMode = Config.DepthMode.AUTOMATIC
-                        Log.i("HANS", "ARCore Depth Mode Enabled (AUTOMATIC)")
                     }
                     config.updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
                     config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
                     arSession!!.configure(config)
                 }
             } catch (e: Exception) {
-                Log.e("HANS", "ARCore fallback init failed: $e")
+                Log.e("HANS", "ARCore session init failed: $e")
             }
         }
 
+        // CRITICAL ORDER: Resume ARCore first, then GLSurfaceView
         try {
             arSession?.resume()
         } catch (e: Exception) {
-            Log.e("HANS", "ARCore Session failed to resume: $e")
+            Log.e("HANS", "ARCore resume failed: $e")
         }
 
         try {
             surfaceView.onResume()
         } catch (e: Exception) {
-            Log.e("HANS", "GLSurfaceView failed to resume: $e")
+            Log.e("HANS", "GLSurfaceView resume failed: $e")
         }
+
+        updateBottomNavBackground(R.id.menu_camera)
     }
 
     override fun onPause() {
+        isActivityPaused = true
+        stopAllHaptics()
+
+        // CRITICAL ORDER: Pause GLSurfaceView first to halt render calls to session.update()
+        try {
+            surfaceView.onPause()
+        } catch (e: Exception) {
+            Log.e("HANS", "GLSurfaceView pause failed: $e")
+        }
+
+        // Pause ARCore session second so camera hardware releases cleanly
+        try {
+            arSession?.pause()
+        } catch (e: Exception) {
+            Log.e("HANS", "ARCore pause failed: $e")
+        }
+
         super.onPause()
-        ArCoreManager.pause()
-        surfaceView.onPause()
     }
 
     override fun onStop() {
-        stopBraceletVibration()
+        stopAllHaptics()
         super.onStop()
     }
 
     override fun onDestroy() {
-        stopBraceletVibration()
+        stopAllHaptics()
         super.onDestroy()
         cvExecutor.shutdown()
-        ArCoreManager.destroy()
+        // Safely close the ARCore session so Camera 0 is released cleanly for the next activity
+        try {
+            arSession?.close()
+            arSession = null
+        } catch (e: Exception) {
+            Log.e("HANS", "Error closing arSession: $e")
+        }
         webSocket?.close(1000, "App closed")
         try { speechRecognizer?.destroy() } catch (e: Exception) {}
-        if (::tts.isInitialized) { tts.stop(); tts.shutdown() }
+        if (::tts.isInitialized) { tts.stop() }
     }
 
     // =================================================================
@@ -458,6 +514,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
     override fun onDrawFrame(gl: GL10?) {
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
         val session = arSession ?: return
+        if (isActivityPaused) return
 
         try {
             if (!isTextureSet && cameraRenderer.textureId != -1) {
@@ -466,14 +523,11 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
             }
 
             val frame = session.update()
-            // 1. Draw camera background at full 60 FPS
             cameraRenderer.draw(frame)
-
-            // 2. Trigger local CV pipeline asynchronously
             triggerLocalInferenceIfIdle(frame)
 
         } catch (e: Exception) {
-            Log.e("HANS", "Error in onDrawFrame", e)
+            Log.e("HANS", "Error in onDrawFrame: $e")
         }
     }
 
@@ -512,7 +566,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                 MotionEvent.ACTION_DOWN -> {
                     touchDownTime = SystemClock.uptimeMillis()
 
-                    // Interrupt TTS immediately if speaking
                     if (::tts.isInitialized && tts.isSpeaking) {
                         tts.stop()
                         tvAiResponse.text = "AI: (Interrupted)"
@@ -526,11 +579,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                 MotionEvent.ACTION_UP -> {
                     val duration = SystemClock.uptimeMillis() - touchDownTime
                     if (duration >= MIN_HOLD_DURATION_MS) {
-                        // User held the screen (Push-to-Talk mode) -> Stop on release
                         if (isPttRecording) stopPttRecording()
-                    } else {
-                        // User tapped the screen (Tap-to-Talk mode) -> Let recognizer listen
-                        Log.d("HANS", "Tap detected: listening for speech until silence...")
                     }
                     true
                 }
@@ -569,7 +618,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                     override fun onBufferReceived(buffer: ByteArray?) {}
 
                     override fun onEndOfSpeech() {
-                        // Silence detected: immediately transition UI to thinking
                         runOnUiThread {
                             tvStatus.text = "Status: Thinking..."
                             btnPtt.setBackgroundColor(Color.parseColor(PTT_COLOR_IDLE))
@@ -658,19 +706,35 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
         }
     }
 
-    private fun stopBraceletVibration() {
+    private fun stopAllHaptics() {
         try {
-            val stopCommand = byteArrayOf(0x03.toByte(), 0x01.toByte(), 0xFF.toByte())
-            if (braceletManager.isConnected()) {
-                braceletManager.writeRawCommand(stopCommand)
-            }
+            hapticArbitrator.stopAllFeedback()
         } catch (e: Exception) {
-            Log.e("HANS", "Failed to stop bracelet vibration", e)
+            Log.e("HANS", "Failed to stop haptics", e)
         }
     }
 
+    private fun loadIntensityMap(): Map<String, Int> {
+        val prefs = getSharedPreferences("FullIntensityPrefs", MODE_PRIVATE)
+        return mapOf(
+            // Handles both direct calibration keys and the full intensity map keys
+            "left" to prefs.getInt("leftIntensity", prefs.getInt("left", 50)),
+            "bottom" to prefs.getInt("bottomIntensity", prefs.getInt("down", 50)),
+            "right" to prefs.getInt("rightIntensity", prefs.getInt("right", 50)),
+            "top" to prefs.getInt("topIntensity", prefs.getInt("top", 50)),
+            "topFront" to prefs.getInt("topFrontIntensity", prefs.getInt("topFront", 50)),
+            "topBack" to prefs.getInt("topBackIntensity", prefs.getInt("topBack", 50)),
+            "belt" to prefs.getInt("beltIntensity", prefs.getInt("belt", 50))
+        )
+    }
+
+    private fun loadActivePattern(): Int {
+        val prefs = getSharedPreferences("PatternPrefs", MODE_PRIVATE)
+        return prefs.getInt("PATTERN_INDEX", 0) // 0 = Single, 1 = Multi, 2 = Sequence
+    }
+
     // =================================================================
-    // ON-DEVICE LLM QUERY HANDLER (Completely Non-Blocking)
+    // ON-DEVICE LLM QUERY HANDLER
     // =================================================================
     private fun handleUserQuery(spokenText: String) {
         val brain = localBrain ?: return

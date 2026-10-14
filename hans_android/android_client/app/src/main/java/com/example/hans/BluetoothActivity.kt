@@ -140,8 +140,10 @@ class BluetoothActivity : AppCompatActivity() {
                 }
 
                 R.id.menu_camera -> {
-                    startActivity(Intent(this, MainActivity::class.java))
-                    finish()
+                    val intent = Intent(this, MainActivity::class.java).apply {
+                        flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+                    }
+                    startActivity(intent)
                     true
                 }
 

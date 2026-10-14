@@ -8,14 +8,20 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!-- Bluetooth Permissions (Android 12+) -->
     <uses-permission
         android:name="android.permission.BLUETOOTH_SCAN"
         android:usesPermissionFlags="neverForLocation"
         tools:targetApi="s" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
-    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!-- Legacy Bluetooth Permissions (Android 11 and lower) -->
+    <uses-permission
+        android:name="android.permission.BLUETOOTH"
+        android:maxSdkVersion="30" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_ADMIN"
+        android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
     <!-- Features -->
@@ -30,45 +36,74 @@
         android:label="Hans"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.MaterialComponents.DayNight.NoActionBar"
+        android:theme="@style/Theme.Hans"
         android:usesCleartextTraffic="true"
         tools:replace="android:theme,android:label,android:allowBackup">
 
-        <!-- ARCore meta-data required by ARCore SDK -->
+        <!-- ARCore meta-data -->
         <meta-data
             android:name="com.google.ar.core"
             android:value="required" />
 
-        <!-- MAIN ACTIVITY (Active Launcher) -->
+        <!-- ============================================== -->
+        <!-- MAIN APPLICATION LAUNCHER (MainActivity)       -->
+        <!-- ============================================== -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:screenOrientation="portrait">
+            android:screenOrientation="portrait"
+            android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
-        <!-- Test harness (can be launched or kept for validation) -->
-        <activity
-            android:name=".LiveCameraTestActivity"
-            android:exported="false"
-            android:screenOrientation="portrait" />
-
-        <activity
-            android:name=".ModelTestActivity"
-            android:exported="false"
-            android:screenOrientation="portrait" />
-            
-        <!-- Main activities (retained without duplicate launcher filters) -->
+        <!-- ============================================== -->
+        <!-- BLUETOOTH ACTIVITIES                           -->
+        <!-- ============================================== -->
         <activity
             android:name=".BluetoothActivity"
             android:exported="false"
+            android:screenOrientation="portrait"
+            android:launchMode="singleTop" />
+
+        <activity
+            android:name=".BluetoothConnectedActivity"
+            android:exported="false"
             android:screenOrientation="portrait" />
 
         <activity
+            android:name=".BluetoothNotConnectedActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
+        <!-- ============================================== -->
+        <!-- SETTINGS & CALIBRATION ACTIVITIES             -->
+        <!-- ============================================== -->
+        <activity
             android:name=".SettingsActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:launchMode="singleTop" />
+
+        <activity
+            android:name=".FullIntensityActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
+        <activity
+            android:name=".CalibrationActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
+        <activity
+            android:name=".InformationActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
+        <activity
+            android:name=".PatternActivity"
             android:exported="false"
             android:screenOrientation="portrait" />
 
