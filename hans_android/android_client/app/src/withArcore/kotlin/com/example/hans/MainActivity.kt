@@ -272,7 +272,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
     }
 
     // =================================================================
-    // LOCAL CV + ARCORE DEPTH + LOCAL HAPTIC PIPELINE (Non-Blocking)
+    // LOCAL CV + ARCORE DEPTH + LOCAL HAPTIC PIPELINE (Zero-Copy)
     // =================================================================
     private fun triggerLocalInferenceIfIdle(frame: Frame) {
         if (isActivityPaused) return
@@ -300,17 +300,20 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                 try {
                     if (isActivityPaused) return@execute
 
-                    val portraitBitmap = CameraImageConverter.yuvToPortraitBitmap(rgbImgRef, 640)
-                    val bmpW = portraitBitmap.width
-                    val bmpH = portraitBitmap.height
+                    // 1. Zero-Copy YUV -> Direct TFLite FloatBuffer conversion (No Bitmaps allocated!)
+                    CameraImageConverter.yuvToNormalizedRgbBuffer(
+                        image = rgbImgRef,
+                        targetSize = 640,
+                        outputBuffer = pipeline.objInputBuffer
+                    )
 
-                    // 1. Dual-Model Inference
-                    val result = pipeline.detect(portraitBitmap)
+                    // 2. Dual-Model Inference
+                    val result = pipeline.detectDirect()
 
-                    // 2. Kalman Tracking
+                    // 3. Kalman Tracking
                     val trackedDetections = tracker.update(result.mergedDetections)
 
-                    // 3. Metric Depth Extraction
+                    // 4. Metric Depth Extraction (3x3 patch sampling with sensor rotation)
                     if (depthImgRef != null) {
                         DepthUtils.assignDepthToDetections(
                             depthImage = depthImgRef,
@@ -321,7 +324,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
 
                     localBrain?.latestDetections = trackedDetections
 
-                    // 4. Local Haptic Navigation
+                    // 5. Local Haptic Navigation
                     val activeTarget = localBrain?.activeTarget ?: "none"
                     val intensities = loadIntensityMap()
 
@@ -354,13 +357,13 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                         lastFpsTimestamp = now
                     }
 
-                    // 5. Update Overlay
+                    // 6. Update Overlay
                     runOnUiThread {
                         if (!isActivityPaused) {
                             overlayView.setTrackedResults(
                                 results = trackedDetections,
-                                srcWidth = bmpW,
-                                srcHeight = bmpH,
+                                srcWidth = 640,
+                                srcHeight = 640,
                                 handIdThreshold = 80
                             )
 
@@ -372,12 +375,10 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                     }
 
                     sendTelemetryToServer(trackedDetections)
-                    portraitBitmap.recycle()
 
                 } catch (e: Exception) {
                     Log.e("HANS", "Local CV frame error", e)
                 } finally {
-                    // Always close images immediately to avoid starving Camera2 HAL buffer queues
                     rgbImgRef.close()
                     depthImgRef?.close()
                     isInferring.set(false)

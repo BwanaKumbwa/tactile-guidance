@@ -3,19 +3,12 @@ package com.example.hans.ml
 import android.media.Image
 import com.example.hans.ml.tracker.TrackedDetection
 import java.nio.ByteOrder
-import kotlin.math.max
-import kotlin.math.min
 
 object DepthUtils {
 
     /**
-     * Extracts metric depth (in meters) for each tracked detection box.
-     * Replicates Python server logic: 15th percentile of non-zero pixels
-     * in the central 25% region-of-interest (ROI) of the bounding box.
-     *
-     * @param depthImage 16-bit depth Image from ARCore (format DEPTH16)
-     * @param detections List of tracked bounding boxes with normalized [0..1] coordinates
-     * @param sensorRotationDegrees Rotation between depth sensor and portrait display (typically 90)
+     * Maps tracked detection bounding boxes (normalized portrait [0..1])
+     * into ARCore 16-bit depth coordinates and assigns depth in meters.
      */
     fun assignDepthToDetections(
         depthImage: Image,
@@ -23,8 +16,7 @@ object DepthUtils {
         sensorRotationDegrees: Int = 90
     ) {
         val plane = depthImage.planes[0]
-        val buffer = plane.buffer
-        buffer.order(ByteOrder.LITTLE_ENDIAN)
+        val buffer = plane.buffer.order(ByteOrder.LITTLE_ENDIAN)
 
         val depthWidth = depthImage.width
         val depthHeight = depthImage.height
@@ -32,64 +24,45 @@ object DepthUtils {
         val pixelStride = plane.pixelStride
 
         for (det in detections) {
-            val box = det.boundingBox
+            val portraitNormX = det.boundingBox.centerX().coerceIn(0f, 1f)
+            val portraitNormY = det.boundingBox.centerY().coerceIn(0f, 1f)
 
-            // In portrait, if display is rotated 90 deg relative to sensor:
-            // Display X maps to Sensor Y; Display Y maps to Sensor (width - X)
-            val roiLeftNorm: Float
-            val roiTopNorm: Float
-            val roiRightNorm: Float
-            val roiBottomNorm: Float
-
-            if (sensorRotationDegrees == 90) {
-                roiLeftNorm = box.top
-                roiTopNorm = 1.0f - box.right
-                roiRightNorm = box.bottom
-                roiBottomNorm = 1.0f - box.left
-            } else {
-                roiLeftNorm = box.left
-                roiTopNorm = box.top
-                roiRightNorm = box.right
-                roiBottomNorm = box.bottom
+            // Convert normalized portrait (X, Y) to raw Depth sensor (depthX, depthY)
+            val (depthX, depthY) = when (sensorRotationDegrees) {
+                90 -> {
+                    val rawX = (portraitNormY * depthWidth).toInt().coerceIn(0, depthWidth - 1)
+                    val rawY = ((1.0f - portraitNormX) * depthHeight).toInt().coerceIn(0, depthHeight - 1)
+                    Pair(rawX, rawY)
+                }
+                else -> {
+                    Pair(
+                        (portraitNormX * depthWidth).toInt().coerceIn(0, depthWidth - 1),
+                        (portraitNormY * depthHeight).toInt().coerceIn(0, depthHeight - 1)
+                    )
+                }
             }
 
-            // Central 25% crop of bounding box
-            val xc = (roiLeftNorm + roiRightNorm) / 2f
-            val yc = (roiTopNorm + roiBottomNorm) / 2f
-            val hw = max(0.01f, (roiRightNorm - roiLeftNorm) * 0.25f)
-            val hh = max(0.01f, (roiBottomNorm - roiTopNorm) * 0.25f)
+            // Sample a 3x3 median patch around (depthX, depthY) to filter out sensor dropouts (0 values)
+            val validDepths = mutableListOf<Float>()
 
-            val xMin = max(0, ((xc - hw) * depthWidth).toInt())
-            val xMax = min(depthWidth - 1, ((xc + hw) * depthWidth).toInt())
-            val yMin = max(0, ((yc - hh) * depthHeight).toInt())
-            val yMax = min(depthHeight - 1, ((yc + hh) * depthHeight).toInt())
+            for (dy in -1..1) {
+                for (dx in -1..1) {
+                    val sampleX = (depthX + dx).coerceIn(0, depthWidth - 1)
+                    val sampleY = (depthY + dy).coerceIn(0, depthHeight - 1)
 
-            if (xMax <= xMin || yMax <= yMin) {
-                det.depth = -1.0f
-                continue
-            }
+                    val byteOffset = sampleY * rowStride + sampleX * pixelStride
+                    val depthMm = buffer.getShort(byteOffset).toInt() and 0xFFFF
 
-            val validDepthsMm = ArrayList<Int>((xMax - xMin + 1) * (yMax - yMin + 1))
-
-            for (y in yMin..yMax) {
-                for (x in xMin..xMax) {
-                    val byteIndex = (y * rowStride) + (x * pixelStride)
-                    val depthMm = buffer.getShort(byteIndex).toInt() and 0xFFFF
-                    // Filter out zero (invalid/unreflective/shadow pixels)
-                    if (depthMm in 80..6000) { // Valid range: 8cm to 6m
-                        validDepthsMm.add(depthMm)
+                    if (depthMm in 100..4500) { // Valid desk/room depth range: 10 cm to 4.5 m
+                        validDepths.add(depthMm / 1000.0f)
                     }
                 }
             }
 
-            if (validDepthsMm.isNotEmpty()) {
-                validDepthsMm.sort()
-                // 15th percentile: robust foreground surface depth (avoids background leakage)
-                val p15Index = (validDepthsMm.size * 0.15f).toInt().coerceIn(0, validDepthsMm.size - 1)
-                val depthMeters = validDepthsMm[p15Index] / 1000.0f
-                det.depth = depthMeters
-            } else {
-                det.depth = -1.0f
+            if (validDepths.isNotEmpty()) {
+                validDepths.sort()
+                val medianDepth = validDepths[validDepths.size / 2]
+                det.depth = medianDepth
             }
         }
     }

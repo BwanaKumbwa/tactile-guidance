@@ -59,12 +59,12 @@ class DualYoloPipeline(
     var activeHardware: String = "Uninitialized"
         private set
 
-    // Independent direct ByteBuffers for concurrent thread safety
-    private val objInputBuffer: ByteBuffer = ByteBuffer.allocateDirect(
+    // Pre-allocated direct ByteBuffers for concurrent thread safety
+    val objInputBuffer: ByteBuffer = ByteBuffer.allocateDirect(
         BATCH_SIZE * INPUT_SIZE * INPUT_SIZE * PIXEL_CHANNELS * 4
     ).apply { order(ByteOrder.nativeOrder()) }
 
-    private val handInputBuffer: ByteBuffer = ByteBuffer.allocateDirect(
+    val handInputBuffer: ByteBuffer = ByteBuffer.allocateDirect(
         BATCH_SIZE * INPUT_SIZE * INPUT_SIZE * PIXEL_CHANNELS * 4
     ).apply { order(ByteOrder.nativeOrder()) }
 
@@ -79,9 +79,6 @@ class DualYoloPipeline(
         objLabels = loadLabelFile(objLabelsFileName) ?: defaultCocoLabels()
         handLabels = loadLabelFile(handLabelsFileName) ?: defaultHandLabels()
 
-        // Build master label map matching controller.py:
-        // index_add = len(names_obj)
-        // master_label = names_obj | {k + index_add: v for k, v in names_hand.items()}
         objLabels.forEachIndexed { idx, label -> masterLabels[idx] = label }
         val indexAdd = objLabels.size
         handLabels.forEachIndexed { idx, label -> masterLabels[idx + indexAdd] = label }
@@ -109,7 +106,6 @@ class DualYoloPipeline(
         var gpuSuccess = false
 
         try {
-            // Attempt GPU acceleration on Google Tensor
             val objDelegate = GpuDelegate()
             val handDelegate = GpuDelegate()
 
@@ -153,11 +149,11 @@ class DualYoloPipeline(
         }
     }
 
-    fun detect(bitmap: Bitmap): DualInferenceResult = runBlocking {
-        val objInter = objInterpreter ?: throw IllegalStateException("Object model uninitialized")
-        val handInter = handInterpreter ?: throw IllegalStateException("Hand model uninitialized")
-
-        // 1. Shared Preprocessing
+    /**
+     * COMPATIBILITY METHOD FOR TEST ACTIVITIES:
+     * Accepts a standard Bitmap, normalizes it into the direct buffers, and runs inference.
+     */
+    fun detect(bitmap: Bitmap): DualInferenceResult {
         val startPre = SystemClock.uptimeMillis()
         val scaledBitmap = if (bitmap.width == INPUT_SIZE && bitmap.height == INPUT_SIZE) {
             bitmap
@@ -165,30 +161,41 @@ class DualYoloPipeline(
             Bitmap.createScaledBitmap(bitmap, INPUT_SIZE, INPUT_SIZE, true)
         }
 
-        // Fill input buffers
         bitmapToNormalizedByteBuffer(scaledBitmap, objInputBuffer)
-        objInputBuffer.rewind()
-        handInputBuffer.rewind()
-        handInputBuffer.put(objInputBuffer) // Fast native buffer copy
-        objInputBuffer.rewind()
-        handInputBuffer.rewind()
 
         if (scaledBitmap != bitmap) {
             scaledBitmap.recycle()
         }
-        val preTime = SystemClock.uptimeMillis() - startPre
 
-        // 2. Parallel Inference Execution
+        return detectDirect(startPre)
+    }
+
+    /**
+     * ZERO-COPY DIRECT INFERENCE:
+     * Expects objInputBuffer to already be filled by CameraImageConverter.yuvToNormalizedRgbBuffer().
+     */
+    fun detectDirect(preStartTime: Long = SystemClock.uptimeMillis()): DualInferenceResult = runBlocking {
+        val objInter = objInterpreter ?: throw IllegalStateException("Object model uninitialized")
+        val handInter = handInterpreter ?: throw IllegalStateException("Hand model uninitialized")
+
+        // Fast native memory copy from objInputBuffer to handInputBuffer
+        objInputBuffer.rewind()
+        handInputBuffer.rewind()
+        handInputBuffer.put(objInputBuffer)
+        objInputBuffer.rewind()
+        handInputBuffer.rewind()
+
+        val preTime = SystemClock.uptimeMillis() - preStartTime
+
+        // Parallel Inference Execution
         val startInfer = SystemClock.uptimeMillis()
 
-        // Allocate raw output arrays based on model tensor shapes
         val objTensorShape = objInter.getOutputTensor(0).shape()
         val handTensorShape = handInter.getOutputTensor(0).shape()
 
         val rawObjOutput = Array(1) { Array(objTensorShape[1]) { FloatArray(objTensorShape[2]) } }
         val rawHandOutput = Array(1) { Array(handTensorShape[1]) { FloatArray(handTensorShape[2]) } }
 
-        // Run concurrently on Dispatchers.Default worker threads
         val objJob = async(Dispatchers.Default) {
             objInter.run(objInputBuffer, rawObjOutput)
         }
@@ -200,14 +207,13 @@ class DualYoloPipeline(
         handJob.await()
         val inferTime = SystemClock.uptimeMillis() - startInfer
 
-        // 3. Postprocessing & Output Normalization
+        // Postprocessing & Output Normalization
         val startPost = SystemClock.uptimeMillis()
         val indexAdd = objLabels.size
 
         val objDetections = processRawOutputs(rawObjOutput[0], objTensorShape[2], offsetClassId = 0, labels = objLabels)
         val handDetections = processRawOutputs(rawHandOutput[0], handTensorShape[2], offsetClassId = indexAdd, labels = handLabels)
 
-        // Merged list matching controller.py outputs: hands + objects together
         val merged = ArrayList<Detection>(objDetections.size + handDetections.size).apply {
             addAll(objDetections)
             addAll(handDetections)
@@ -272,10 +278,8 @@ class DualYoloPipeline(
                 }
             }
 
-            // FILTER: Discard 'person' (Class 0 of Object Detector)
-            // It strongly overlaps with hands and is redundant for desk navigation
             if (offsetClassId == 0 && maxClassId == 0) {
-                continue
+                continue // Filter 'person'
             }
 
             val confidence = objectness * maxClassScore

@@ -1,52 +1,25 @@
 package com.example.hans.ml
 
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.ImageFormat
-import android.graphics.Matrix
-import android.graphics.Rect
-import android.graphics.YuvImage
 import android.media.Image
-import java.io.ByteArrayOutputStream
+import java.nio.ByteBuffer
+import kotlin.math.max
+import kotlin.math.min
 
 object CameraImageConverter {
 
     /**
-     * Converts an ARCore YUV_420_888 Image into a Portrait-rotated 640x640 Bitmap.
+     * Converts an ARCore YUV_420_888 Image directly into a normalized (0..1) RGB Float ByteBuffer
+     * with 90-degree clockwise rotation (matching Android portrait display).
+     *
+     * Pre-allocated direct buffer size: 1 * targetSize * targetSize * 3 * 4 bytes.
+     * ZERO Bitmap allocations per frame.
      */
-    fun yuvToPortraitBitmap(image: Image, targetSize: Int = 640): Bitmap {
-        val width = image.width
-        val height = image.height
-
-        val nv21 = yuv420ToNv21(image)
-
-        val yuvImage = YuvImage(nv21, ImageFormat.NV21, width, height, null)
-        val out = ByteArrayOutputStream()
-        // 75% JPEG quality is fast to encode/decode and preserves full edge fidelity for YOLO
-        yuvImage.compressToJpeg(Rect(0, 0, width, height), 75, out)
-
-        val rawBmp = BitmapFactory.decodeByteArray(out.toByteArray(), 0, out.size())
-            ?: throw IllegalStateException("Failed to decode YUV byte stream")
-
-        // Rotate 90 degrees to match portrait screen orientation and scale to 640x640
-        val matrix = Matrix().apply {
-            postRotate(90f)
-            val scaleX = targetSize.toFloat() / height // Note swapped dims after 90 deg rotation
-            val scaleY = targetSize.toFloat() / width
-            postScale(scaleX, scaleY)
-        }
-
-        val portraitBmp = Bitmap.createBitmap(rawBmp, 0, 0, rawBmp.width, rawBmp.height, matrix, true)
-        rawBmp.recycle()
-        return portraitBmp
-    }
-
-    private fun yuv420ToNv21(image: Image): ByteArray {
-        val width = image.width
-        val height = image.height
-        val ySize = width * height
-        val uvSize = width * height / 2
-        val nv21 = ByteArray(ySize + uvSize)
+    fun yuvToNormalizedRgbBuffer(
+        image: Image,
+        targetSize: Int,
+        outputBuffer: ByteBuffer
+    ) {
+        outputBuffer.rewind()
 
         val yPlane = image.planes[0]
         val uPlane = image.planes[1]
@@ -56,43 +29,57 @@ object CameraImageConverter {
         val uBuffer = uPlane.buffer
         val vBuffer = vPlane.buffer
 
+        val srcWidth = image.width
+        val srcHeight = image.height
+
         val yRowStride = yPlane.rowStride
         val yPixelStride = yPlane.pixelStride
 
-        if (yPixelStride == 1 && yRowStride == width) {
-            yBuffer.get(nv21, 0, ySize)
-        } else {
-            val rowData = ByteArray(width)
-            for (row in 0 until height) {
-                yBuffer.position(row * yRowStride)
-                yBuffer.get(rowData, 0, width)
-                System.arraycopy(rowData, 0, nv21, row * width, width)
+        val uvRowStride = uPlane.rowStride
+        val uvPixelStride = uPlane.pixelStride
+
+        // In 90-deg clockwise rotation:
+        // Portrait X [0..targetSize-1] maps to Camera Y: (targetSize - 1 - dstY) / targetSize * srcHeight
+        // Portrait Y [0..targetSize-1] maps to Camera X: dstX / targetSize * srcWidth
+        //
+        // Specifically for target (dstX, dstY):
+        // srcX = (dstY.toFloat() / targetSize * srcWidth).toInt()
+        // srcY = ((targetSize - 1 - dstX).toFloat() / targetSize * srcHeight).toInt()
+
+        for (dstY in 0 until targetSize) {
+            val srcX = (dstY.toFloat() / targetSize * srcWidth).toInt().coerceIn(0, srcWidth - 1)
+
+            for (dstX in 0 until targetSize) {
+                val srcY = ((targetSize - 1 - dstX).toFloat() / targetSize * srcHeight).toInt().coerceIn(0, srcHeight - 1)
+
+                // 1. Fetch Y
+                val yIndex = srcY * yRowStride + srcX * yPixelStride
+                val yVal = (yBuffer.get(yIndex).toInt() and 0xFF)
+
+                // 2. Fetch U and V (subsampled 2x2)
+                val uvSrcX = srcX / 2
+                val uvSrcY = srcY / 2
+                val uIndex = uvSrcY * uvRowStride + uvSrcX * uvPixelStride
+                val vIndex = uvSrcY * vPlane.rowStride + uvSrcX * vPlane.pixelStride
+
+                val uVal = (uBuffer.get(uIndex).toInt() and 0xFF) - 128
+                val vVal = (vBuffer.get(vIndex).toInt() and 0xFF) - 128
+
+                // 3. Fast Integer YUV -> RGB conversion
+                // R = Y + 1.402 * V
+                // G = Y - 0.344136 * U - 0.714136 * V
+                // B = Y + 1.772 * U
+                val r = (yVal + (91881 * vVal shr 16)).coerceIn(0, 255)
+                val g = (yVal - ((22554 * uVal + 46802 * vVal) shr 16)).coerceIn(0, 255)
+                val b = (yVal + (116130 * uVal shr 16)).coerceIn(0, 255)
+
+                // 4. Normalized float (0.0 .. 1.0) into direct TFLite buffer
+                outputBuffer.putFloat(r / 255.0f)
+                outputBuffer.putFloat(g / 255.0f)
+                outputBuffer.putFloat(b / 255.0f)
             }
         }
 
-        val vRowStride = vPlane.rowStride
-        val vPixelStride = vPlane.pixelStride
-        val uRowStride = uPlane.rowStride
-        val uPixelStride = uPlane.pixelStride
-
-        val uvWidth = width / 2
-        val uvHeight = height / 2
-        var nv21Idx = ySize
-
-        val vBytes = ByteArray(vBuffer.remaining())
-        val uBytes = ByteArray(uBuffer.remaining())
-        vBuffer.get(vBytes)
-        uBuffer.get(uBytes)
-
-        for (row in 0 until uvHeight) {
-            val vRowStart = row * vRowStride
-            val uRowStart = row * uRowStride
-            for (col in 0 until uvWidth) {
-                nv21[nv21Idx++] = vBytes[vRowStart + (col * vPixelStride)]
-                nv21[nv21Idx++] = uBytes[uRowStart + (col * uPixelStride)]
-            }
-        }
-
-        return nv21
+        outputBuffer.rewind()
     }
 }
