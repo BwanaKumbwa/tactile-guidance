@@ -18,6 +18,16 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
+    <!-- Temporary Wide Snapshot Preview (Shown for 2s after wide capture) -->
+    <ImageView
+        android:id="@+id/ivWidePreview"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="fitCenter"
+        android:background="#DD000000"
+        android:visibility="gone"
+        android:elevation="60dp" />
+
     <!-- Overlay View (Locked exactly to the Camera Preview) -->
     <com.example.hans.OverlayView
         android:id="@+id/overlayView"
