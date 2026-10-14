@@ -3,6 +3,7 @@ package com.example.hans
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.media.Image
 import android.opengl.GLES20
@@ -62,7 +63,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
     // =================================================================
     private val SERVER_IP = BuildConfig.SERVER_IP
     private val WEBSOCKET_URL = "ws://$SERVER_IP:8000/ws/video"
-    private val WAKE_WORD = BuildConfig.WAKE_WORD
 
     // UI Components
     private lateinit var surfaceView: GLSurfaceView
@@ -88,12 +88,14 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
     @Volatile private var isActivityPaused = false
 
     // =================================================================
-    // ON-DEVICE CV & TRACKING
+    // ON-DEVICE CV, WIDE CAMERA & TRACKING
     // =================================================================
     private var dualPipeline: DualYoloPipeline? = null
     private val tracker: SortTracker get() = CvPipelineSingleton.tracker
     private val cvExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     private val isInferring = AtomicBoolean(false)
+    private lateinit var wideCameraManager: WideCameraManager
+    @Volatile private var isWideScanning = false
 
     // Performance Metrics
     private var lastFpsTimestamp = 0L
@@ -119,10 +121,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
     private lateinit var braceletManager: BleManager
     private lateinit var beltManager: BleManager
 
-    // Preferences
-    private val Intensity_Prefs = "FullIntensityPrefs"
-    private val Pattern_Prefs = "PatternPrefs"
-
     // =================================================================
     // LIFECYCLE
     // =================================================================
@@ -146,7 +144,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
             updateBottomNavBarColor(false)
         }
 
-        // Clean Tab Switching: Keep MainActivity alive in background to prevent camera disconnects
         bottomNav.setOnItemSelectedListener { item ->
             when (item.itemId) {
                 R.id.menu_home -> {
@@ -170,27 +167,21 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
             }
         }
 
-        // OpenGL GLSurfaceView configuration
         surfaceView.preserveEGLContextOnPause = true
         surfaceView.setEGLContextClientVersion(2)
         surfaceView.setEGLConfigChooser(8, 8, 8, 8, 16, 0)
         surfaceView.setRenderer(this)
         surfaceView.renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
 
-        // BLE Singletons
         braceletManager = BleManagerSingleton.getBraceletManager(this)
         beltManager = BleManagerSingleton.getBeltManager(this)
 
-        // Local Haptic Arbitrator
         hapticArbitrator = HapticArbitrator(braceletManager, beltManager)
+        wideCameraManager = WideCameraManager(this)
 
-        // Warm up CV models via Singleton
         initLocalCvEngine()
-
-        // Initialize On-Device LLM Brain
         initLocalBrain()
 
-        // Permissions
         if (allPermissionsGranted()) {
             initSystem()
         } else {
@@ -199,10 +190,8 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
 
         tts = TextToSpeech(this, this)
 
-        val rootLayout = findViewById<ConstraintLayout>(R.id.rootLayout)
-        rootLayout.setBackgroundColor(Color.BLACK)
+        findViewById<ConstraintLayout>(R.id.rootLayout).setBackgroundColor(Color.BLACK)
 
-        // Force 16:9 camera layout
         surfaceView.post {
             val screenWidth = surfaceView.width
             val targetHeight = (screenWidth * 16) / 9
@@ -261,8 +250,116 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
             model = BuildConfig.LLM_MODEL,
             hardwareStatusProvider = {
                 Pair(braceletManager.isConnected(), beltManager.isConnected())
+            },
+            wideScanProvider = {
+                performWideScan()
             }
         )
+    }
+
+    /**
+     * APPROACH A: SAFE PAUSE-RESUME SNAPSHOT HELPER WITH DUAL SAVING (RAW & ANNOTATED)
+     */
+    private suspend fun performWideScan(): List<String> = withContext(Dispatchers.Main) {
+        if (isWideScanning) return@withContext emptyList()
+        isWideScanning = true
+
+        val ivWidePreview = findViewById<android.widget.ImageView?>(R.id.ivWidePreview)
+        tvStatus.text = "📷 Scanning surroundings (Ultra-Wide)..."
+
+        var snapshot: Bitmap? = null
+        val wideTarget = wideCameraManager.findUltraWideTarget()
+
+        if (wideTarget != null) {
+            try {
+                // 1. Pause ARCore and GL rendering
+                surfaceView.onPause()
+                try { arSession?.pause() } catch (e: Exception) { Log.w("HANS", "AR pause: $e") }
+
+                kotlinx.coroutines.delay(150)
+
+                // 2. Capture frame from ultra-wide lens
+                snapshot = withContext(Dispatchers.IO) {
+                    wideCameraManager.captureWideSnapshot()
+                }
+
+            } catch (e: Exception) {
+                Log.e("HANS", "Wide scan capture error", e)
+            } finally {
+                // 3. Immediately restore ARCore tracking
+                try {
+                    arSession?.resume()
+                    surfaceView.onResume()
+                } catch (e: Exception) {
+                    Log.e("HANS", "Failed to resume ARCore after wide scan", e)
+                }
+                isWideScanning = false
+            }
+        } else {
+            isWideScanning = false
+            val currentObjects = localBrain?.latestDetections?.filter { it.classId < 80 }?.map { it.label }?.distinct() ?: emptyList()
+            tvStatus.text = "Wide lens unavailable - scanned main view"
+            return@withContext currentObjects
+        }
+
+        if (snapshot == null) {
+            tvStatus.text = "Ultra-Wide capture unavailable"
+            return@withContext emptyList()
+        }
+
+        // --- STEP 1: Save the RAW copy to gallery ---
+        withContext(Dispatchers.IO) {
+            DebugImageSaver.saveSnapshotToGallery(this@MainActivity, snapshot, "wide_raw")
+        }
+
+        // --- STEP 2: Run YOLO inference on the wide snapshot ---
+        val pipeline = dualPipeline
+        val (detectedLabels, detections) = withContext(Dispatchers.Default) {
+            if (pipeline != null) {
+                val origThresh = pipeline.confThreshold
+                pipeline.confThreshold = 0.25f // Optimized sensitivity for wider angle / smaller peripheral items
+                val wideResult = pipeline.detect(snapshot)
+                pipeline.confThreshold = origThresh
+
+                val labels = wideResult.objectDetections.map { it.label }.distinct()
+                Pair(labels, wideResult.objectDetections)
+            } else {
+                Pair(emptyList(), emptyList())
+            }
+        }
+
+        // --- STEP 3: Draw bounding boxes on a clone & save the ANNOTATED copy ---
+        var annotatedBitmapRef: Bitmap? = null
+        withContext(Dispatchers.IO) {
+            val (_, annotated) = DebugImageSaver.saveAnnotatedSnapshotToGallery(
+                this@MainActivity,
+                snapshot,
+                detections,
+                "wide_annotated"
+            )
+            annotatedBitmapRef = annotated
+        }
+
+        // --- STEP 4: Show the annotated image in the on-screen preview ---
+        val displayBitmap = annotatedBitmapRef ?: snapshot
+        ivWidePreview?.setImageBitmap(displayBitmap)
+        ivWidePreview?.visibility = View.VISIBLE
+
+        tvStatus.text = if (detectedLabels.isNotEmpty()) {
+            "Wide detected (${detections.size}): ${detectedLabels.joinToString(", ")}"
+        } else {
+            "Wide: No objects recognized"
+        }
+
+        // Dismiss preview after 2.5 seconds and clean up
+        lifecycleScope.launch(Dispatchers.Main) {
+            kotlinx.coroutines.delay(2500)
+            ivWidePreview?.visibility = View.GONE
+            snapshot.recycle()
+            annotatedBitmapRef?.recycle()
+        }
+
+        return@withContext detectedLabels
     }
 
     private fun initSystem() {
@@ -275,7 +372,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
     // LOCAL CV + ARCORE DEPTH + LOCAL HAPTIC PIPELINE (Zero-Copy)
     // =================================================================
     private fun triggerLocalInferenceIfIdle(frame: Frame) {
-        if (isActivityPaused) return
+        if (isActivityPaused || isWideScanning) return
         val pipeline = dualPipeline ?: return
 
         if (!isInferring.compareAndSet(false, true)) {
@@ -298,22 +395,17 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
 
             cvExecutor.execute {
                 try {
-                    if (isActivityPaused) return@execute
+                    if (isActivityPaused || isWideScanning) return@execute
 
-                    // 1. Zero-Copy YUV -> Direct TFLite FloatBuffer conversion (No Bitmaps allocated!)
                     CameraImageConverter.yuvToNormalizedRgbBuffer(
                         image = rgbImgRef,
                         targetSize = 640,
                         outputBuffer = pipeline.objInputBuffer
                     )
 
-                    // 2. Dual-Model Inference
                     val result = pipeline.detectDirect()
-
-                    // 3. Kalman Tracking
                     val trackedDetections = tracker.update(result.mergedDetections)
 
-                    // 4. Metric Depth Extraction (3x3 patch sampling with sensor rotation)
                     if (depthImgRef != null) {
                         DepthUtils.assignDepthToDetections(
                             depthImage = depthImgRef,
@@ -324,7 +416,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
 
                     localBrain?.latestDetections = trackedDetections
 
-                    // 5. Local Haptic Navigation
                     val activeTarget = localBrain?.activeTarget ?: "none"
                     val intensities = loadIntensityMap()
 
@@ -357,9 +448,8 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                         lastFpsTimestamp = now
                     }
 
-                    // 6. Update Overlay
                     runOnUiThread {
-                        if (!isActivityPaused) {
+                        if (!isActivityPaused && !isWideScanning) {
                             overlayView.setTrackedResults(
                                 results = trackedDetections,
                                 srcWidth = 640,
@@ -416,7 +506,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
     }
 
     // =================================================================
-    // ARCORE LIFECYCLE (Hardened Order)
+    // ARCORE LIFECYCLE
     // =================================================================
     override fun onResume() {
         super.onResume()
@@ -440,7 +530,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
             }
         }
 
-        // CRITICAL ORDER: Resume ARCore first, then GLSurfaceView
         try {
             arSession?.resume()
         } catch (e: Exception) {
@@ -460,14 +549,12 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
         isActivityPaused = true
         stopAllHaptics()
 
-        // CRITICAL ORDER: Pause GLSurfaceView first to halt render calls to session.update()
         try {
             surfaceView.onPause()
         } catch (e: Exception) {
             Log.e("HANS", "GLSurfaceView pause failed: $e")
         }
 
-        // Pause ARCore session second so camera hardware releases cleanly
         try {
             arSession?.pause()
         } catch (e: Exception) {
@@ -486,7 +573,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
         stopAllHaptics()
         super.onDestroy()
         cvExecutor.shutdown()
-        // Safely close the ARCore session so Camera 0 is released cleanly for the next activity
         try {
             arSession?.close()
             arSession = null
@@ -515,7 +601,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
     override fun onDrawFrame(gl: GL10?) {
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
         val session = arSession ?: return
-        if (isActivityPaused) return
+        if (isActivityPaused || isWideScanning) return
 
         try {
             if (!isTextureSet && cameraRenderer.textureId != -1) {
@@ -701,7 +787,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
 
     private fun restartListening() {
         runOnUiThread {
-            if (!isPttRecording) {
+            if (!isPttRecording && !isWideScanning) {
                 tvStatus.text = "Status: Tap screen to speak"
             }
         }
@@ -718,7 +804,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
     private fun loadIntensityMap(): Map<String, Int> {
         val prefs = getSharedPreferences("FullIntensityPrefs", MODE_PRIVATE)
         return mapOf(
-            // Handles both direct calibration keys and the full intensity map keys
             "left" to prefs.getInt("leftIntensity", prefs.getInt("left", 50)),
             "bottom" to prefs.getInt("bottomIntensity", prefs.getInt("down", 50)),
             "right" to prefs.getInt("rightIntensity", prefs.getInt("right", 50)),
@@ -727,11 +812,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
             "topBack" to prefs.getInt("topBackIntensity", prefs.getInt("topBack", 50)),
             "belt" to prefs.getInt("beltIntensity", prefs.getInt("belt", 50))
         )
-    }
-
-    private fun loadActivePattern(): Int {
-        val prefs = getSharedPreferences("PatternPrefs", MODE_PRIVATE)
-        return prefs.getInt("PATTERN_INDEX", 0) // 0 = Single, 1 = Multi, 2 = Sequence
     }
 
     // =================================================================

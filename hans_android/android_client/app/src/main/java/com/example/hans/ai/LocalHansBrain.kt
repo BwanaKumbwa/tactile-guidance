@@ -2,7 +2,6 @@ package com.example.hans.ai
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.Color
 import android.util.Base64
 import android.util.Log
 import com.example.hans.ml.tracker.TrackedDetection
@@ -24,17 +23,17 @@ class LocalHansBrain(
     private val apiUrl: String,
     private val apiKey: String,
     private val model: String,
-    // Callback to inspect Bluetooth hardware states
-    private val hardwareStatusProvider: () -> Pair<Boolean, Boolean> // Pair(braceletConnected, beltConnected)
+    private val hardwareStatusProvider: () -> Pair<Boolean, Boolean>,
+    private val wideScanProvider: (suspend () -> List<String>)? = null
 ) {
     companion object {
         private const val TAG = "LocalHansBrain"
     }
 
     private val client = OkHttpClient.Builder()
-        .connectTimeout(5, TimeUnit.SECONDS)
-        .readTimeout(10, TimeUnit.SECONDS)
-        .writeTimeout(5, TimeUnit.SECONDS)
+        .connectTimeout(6, TimeUnit.SECONDS)
+        .readTimeout(12, TimeUnit.SECONDS)
+        .writeTimeout(6, TimeUnit.SECONDS)
         .build()
 
     // Valid COCO target classes (Excluding 'person')
@@ -51,17 +50,12 @@ class LocalHansBrain(
         "clock", "vase", "scissors", "teddy bear", "hair drier", "toothbrush"
     )
 
-    // State matching server SharedState
     @Volatile var activeTarget: String = "none"
     val targetList = mutableListOf<String>()
     var listMode: String = "unordered"
-    var verbosity: String = "concise"
-
-    // History of grasped items
     val graspedObjectsHistory = mutableListOf<String>()
 
     @Volatile var latestDetections: List<TrackedDetection> = emptyList()
-    @Volatile var latestFrameBitmap: Bitmap? = null
 
     private val conversationHistory = JSONArray()
 
@@ -70,25 +64,22 @@ class LocalHansBrain(
     }
 
     private fun initSystemPrompt() {
-        // Enforces strict scope restriction identical to server_main.py & SOUL.md
         val systemPrompt = """
             You are 'Hans', a tactile spatial navigation assistant for a visually impaired user.
             You guide the user's hand toward physical objects using a haptic bracelet and belt.
 
             CRITICAL SCOPE RESTRICTIONS:
             1. You are strictly a physical environment and navigation assistant.
-            2. If the user asks a question completely unrelated to navigation, visible objects, or system settings (e.g. general knowledge, trivia, coding, philosophy), politely inform them that this is outside your scope as a spatial assistant.
+            2. If the user asks a question completely unrelated to navigation, visible objects, or system settings, politely inform them that this is outside your scope.
             3. Answer in 1-2 concise, natural sentences. Avoid conversational pleasantries.
-            4. You can only set targets that are recognizable physical items.
-            5. Tools available:
+            4. Available tools:
                - 'set_target': when user wants to find, locate, grab, or guide to an object.
-               - 'get_visible_objects': when user asks what is in front of them or visible.
+               - 'get_visible_objects': when user asks what is directly in front of them right now.
+               - 'scan_surroundings': when user asks what is around them, in the wider room, or asks to look around using the ultra-wide lens.
                - 'get_hardware_status': when user asks if the bracelet or belt is connected.
                - 'mark_grasped': when user says they grabbed or found the object.
-               - 'add_targets_to_list': when user gives multiple targets.
-               - 'clear_target_list': when user asks to clear or stop searching.
-               - 'find_specific_object': when user specifies a color or attribute (e.g., 'blue cup').
-            6. Append speech rate tag if requested: [SPEED:SLOW], [SPEED:NORMAL], or [SPEED:FAST].
+               - 'clear_target_list': when user asks to stop searching.
+            5. Append speech rate tag if requested: [SPEED:SLOW], [SPEED:NORMAL], or [SPEED:FAST].
         """.trimIndent()
 
         conversationHistory.put(JSONObject().apply {
@@ -114,7 +105,6 @@ class LocalHansBrain(
 
             val toolCalls = message.optJSONArray("tool_calls")
 
-            // Direct verbal answer without tools
             if (toolCalls == null || toolCalls.length() == 0) {
                 val content = message.optString("content", "Understood.")
                 conversationHistory.put(JSONObject().apply {
@@ -126,7 +116,6 @@ class LocalHansBrain(
 
             conversationHistory.put(message)
 
-            // Execute requested tools
             for (i in 0 until toolCalls.length()) {
                 val call = toolCalls.getJSONObject(i)
                 val callId = call.getString("id")
@@ -144,7 +133,6 @@ class LocalHansBrain(
                 })
             }
 
-            // Follow-up LLM response after tool execution
             val finalJson = callLlmEndpoint()
             val finalContent = finalJson?.optJSONArray("choices")?.optJSONObject(0)
                 ?.optJSONObject("message")?.optString("content", "Done.") ?: "Done."
@@ -156,10 +144,7 @@ class LocalHansBrain(
         }
     }
 
-    // =================================================================
-    // LOCAL TOOL DISPATCH (Exact Port of server_hans.py)
-    // =================================================================
-    private fun executeLocalTool(name: String, args: JSONObject): String {
+    private suspend fun executeLocalTool(name: String, args: JSONObject): String {
         return when (name) {
             "set_target" -> {
                 val requested = args.optString("target_name", "").lowercase().trim()
@@ -172,51 +157,32 @@ class LocalHansBrain(
                     listMode = "unordered"
                     "Target successfully set to $matched."
                 } else {
-                    "'$requested' is not a recognized object class. Available target types include cup, bottle, chair, keyboard, laptop, and phone."
-                }
-            }
-
-            "add_targets_to_list" -> {
-                val targetsArray = args.optJSONArray("targets") ?: JSONArray()
-                val mode = args.optString("mode", "unordered")
-                val accepted = mutableListOf<String>()
-                val rejected = mutableListOf<String>()
-
-                for (i in 0 until targetsArray.length()) {
-                    val raw = targetsArray.getString(i).lowercase().trim()
-                    val matched = matchValidTarget(raw)
-                    if (matched != null) {
-                        accepted.add(matched)
-                    } else {
-                        rejected.add(raw)
-                    }
-                }
-
-                if (accepted.isNotEmpty()) {
-                    targetList.clear()
-                    targetList.addAll(accepted)
-                    listMode = mode
-                    activeTarget = accepted[0]
-                    var reply = "Target list updated with: ${accepted.joinToString(", ")}."
-                    if (rejected.isNotEmpty()) {
-                        reply += " Rejected unrecognized items: ${rejected.joinToString(", ")}."
-                    }
-                    reply
-                } else {
-                    "None of the requested items are recognized objects. Valid examples: cup, bottle, chair, mouse."
+                    "'$requested' is not a recognized object class."
                 }
             }
 
             "get_visible_objects" -> {
-                val visible = latestDetections.filter { it.classId < 80 } // Objects only (exclude hands)
+                val visible = latestDetections.filter { it.classId < 80 }
                 if (visible.isEmpty()) {
-                    "No recognized objects currently detected."
+                    "No recognized objects in the central view."
                 } else {
-                    val items = visible.joinToString("\n") { det ->
-                        val depthStr = if (det.depth > 0) String.format("%.2fm away", det.depth) else "unknown distance"
-                        "- ${det.label} (ID: ${det.trackId}, $depthStr)"
+                    val items = visible.joinToString(", ") { det ->
+                        if (det.depth > 0) "${det.label} (${String.format("%.1fm", det.depth)})" else det.label
                     }
-                    "Visible objects:\n$items"
+                    "In front of you: $items."
+                }
+            }
+
+            "scan_surroundings" -> {
+                if (wideScanProvider != null) {
+                    val detectedInWide = wideScanProvider.invoke()
+                    if (detectedInWide.isEmpty()) {
+                        "Wide camera scan complete: no clear objects detected in peripheral surroundings."
+                    } else {
+                        "Wide-angle scan shows: ${detectedInWide.joinToString(", ")}."
+                    }
+                } else {
+                    "Wide camera scanning is not available."
                 }
             }
 
@@ -234,23 +200,7 @@ class LocalHansBrain(
                     targetList.remove(prev)
                 }
                 activeTarget = if (targetList.isNotEmpty() && listMode == "ordered") targetList[0] else "none"
-                "Object marked as grasped. ${if (activeTarget != "none") "Next target: $activeTarget." else "Navigation complete."}"
-            }
-
-            "get_current_target_list" -> {
-                if (targetList.isEmpty()) {
-                    "Your target list is currently empty."
-                } else {
-                    "Target list ($listMode): ${targetList.joinToString(", ")}. Current active: $activeTarget."
-                }
-            }
-
-            "get_grasped_objects_history" -> {
-                if (graspedObjectsHistory.isEmpty()) {
-                    "No objects grasped yet."
-                } else {
-                    "Previously grasped objects: ${graspedObjectsHistory.joinToString(", ")}."
-                }
+                "Object marked as grasped."
             }
 
             "clear_target_list" -> {
@@ -259,46 +209,20 @@ class LocalHansBrain(
                 "Target list cleared and navigation stopped."
             }
 
-            "find_specific_object" -> {
-                val className = args.optString("class_name", "").lowercase().trim()
-                val color = args.optString("description", "").lowercase().trim()
-
-                val matchedClass = matchValidTarget(className)
-                if (matchedClass == null) {
-                    "Cannot search for '$className' as it is not a recognized object."
-                } else {
-                    val candidates = latestDetections.filter { it.label == matchedClass }
-                    if (candidates.isEmpty()) {
-                        "I don't see any ${matchedClass}s right now."
-                    } else {
-                        // Lock onto target
-                        activeTarget = matchedClass
-                        "Locked onto the $color $matchedClass."
-                    }
-                }
-            }
-
-            else -> "Tool $name executed."
+            else -> "Tool $name completed."
         }
     }
 
-    // =================================================================
-    // COCO TARGET VALIDATION & FUZZY MATCHING (Levenshtein + Sequence)
-    // =================================================================
     private fun matchValidTarget(input: String): String? {
         val clean = input.lowercase().trim()
-
-        // 1. Exact match against valid COCO classes
         if (clean in validTargetClasses) return clean
 
-        // 2. Check currently visible objects first (Prioritize what's right in front of the camera)
         for (det in latestDetections) {
             if (det.classId < 80 && calculateSimilarity(clean, det.label) > 0.70) {
                 return det.label
             }
         }
 
-        // 3. Fuzzy match against all COCO classes (Handles speech errors like 'cop' -> 'cup')
         var bestMatch: String? = null
         var bestScore = 0.0
 
@@ -334,24 +258,34 @@ class LocalHansBrain(
         return dp[s1.length][s2.length]
     }
 
-    // =================================================================
-    // OFFLINE FALLBACK
-    // =================================================================
-    private fun handleLocalFallbackCommand(text: String): String {
+    private suspend fun handleLocalFallbackCommand(text: String): String {
         val lower = text.lowercase().trim()
 
         return when {
+            lower.contains("around") || lower.contains("surroundings") || lower.contains("room") || lower.contains("look around") -> {
+                if (wideScanProvider != null) {
+                    val wideResults = wideScanProvider.invoke()
+                    if (wideResults.isNotEmpty()) {
+                        "Around you: ${wideResults.joinToString(", ")}."
+                    } else {
+                        "No distinct objects detected in the wider room."
+                    }
+                } else {
+                    "Wide scanning not supported."
+                }
+            }
+
             lower.contains("hardware") || lower.contains("bracelet") || lower.contains("belt") -> {
                 val (bracelet, belt) = hardwareStatusProvider()
                 "Bracelet: ${if (bracelet) "Connected" else "Disconnected"}. Belt: ${if (belt) "Connected" else "Disconnected"}."
             }
 
-            lower.contains("what do you see") || lower.contains("what's visible") || lower.contains("what is around") -> {
+            lower.contains("what do you see") || lower.contains("what's visible") || lower.contains("in front") -> {
                 val visible = latestDetections.filter { it.classId < 80 }
                 if (visible.isEmpty()) {
-                    "No recognized objects visible."
+                    "Nothing detected directly in front of you."
                 } else {
-                    "I see: ${visible.joinToString(", ") { it.label }}."
+                    "In front of you: ${visible.joinToString(", ") { it.label }}."
                 }
             }
 
@@ -362,7 +296,7 @@ class LocalHansBrain(
                     activeTarget = matched
                     "Looking for $matched."
                 } else {
-                    "'$item' is not a recognized object class."
+                    "'$item' is not recognized."
                 }
             }
 
@@ -390,7 +324,7 @@ class LocalHansBrain(
             put("tools", getAvailableTools())
             put("tool_choice", "auto")
             put("max_tokens", 350)
-            put("temperature", 0.1) // Low temperature for deterministic tool calling
+            put("temperature", 0.1)
         }
 
         val request = Request.Builder()
@@ -422,7 +356,7 @@ class LocalHansBrain(
                 put("type", "function")
                 put("function", JSONObject().apply {
                     put("name", "set_target")
-                    put("description", "Sets the active physical target object. Must be a valid physical object class.")
+                    put("description", "Sets the active physical target object to guide towards.")
                     put("parameters", JSONObject().apply {
                         put("type", "object")
                         put("properties", JSONObject().apply {
@@ -439,30 +373,17 @@ class LocalHansBrain(
             put(JSONObject().apply {
                 put("type", "function")
                 put("function", JSONObject().apply {
-                    put("name", "add_targets_to_list")
-                    put("description", "Adds multiple objects to search for in ordered or unordered mode.")
-                    put("parameters", JSONObject().apply {
-                        put("type", "object")
-                        put("properties", JSONObject().apply {
-                            put("targets", JSONObject().apply {
-                                put("type", "array")
-                                put("items", JSONObject().apply { put("type", "string") })
-                            })
-                            put("mode", JSONObject().apply {
-                                put("type", "string")
-                                put("enum", JSONArray().apply { put("ordered"); put("unordered") })
-                            })
-                        })
-                        put("required", JSONArray().apply { put("targets") })
-                    })
+                    put("name", "get_visible_objects")
+                    put("description", "Returns objects currently visible in the narrow front camera view.")
+                    put("parameters", JSONObject().apply { put("type", "object"); put("properties", JSONObject()) })
                 })
             })
 
             put(JSONObject().apply {
                 put("type", "function")
                 put("function", JSONObject().apply {
-                    put("name", "get_visible_objects")
-                    put("description", "Returns the list of physical objects currently detected by the camera with distances.")
+                    put("name", "scan_surroundings")
+                    put("description", "Uses the ultra-wide angle camera to scan the entire room and peripheral surroundings.")
                     put("parameters", JSONObject().apply { put("type", "object"); put("properties", JSONObject()) })
                 })
             })
@@ -480,7 +401,7 @@ class LocalHansBrain(
                 put("type", "function")
                 put("function", JSONObject().apply {
                     put("name", "mark_grasped")
-                    put("description", "Marks the current object as grasped and advances the target list.")
+                    put("description", "Marks the current object as grasped.")
                     put("parameters", JSONObject().apply { put("type", "object"); put("properties", JSONObject()) })
                 })
             })
