@@ -6,7 +6,6 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Color
-import android.graphics.RectF
 import android.media.Image
 import android.opengl.GLES20
 import android.opengl.GLSurfaceView
@@ -34,11 +33,13 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.example.hans.ai.LocalHansBrain
 import com.example.hans.haptics.HapticArbitrator
+import com.example.hans.haptics.PhoneHapticFeedback
 import com.example.hans.ml.BoundingBoxOverlay
 import com.example.hans.ml.CameraImageConverter
 import com.example.hans.ml.CvPipelineSingleton
 import com.example.hans.ml.DepthUtils
 import com.example.hans.ml.DualYoloPipeline
+import com.example.hans.ml.tracker.OpenVocabTracker
 import com.example.hans.ml.tracker.SortTracker
 import com.example.hans.ml.tracker.TrackedDetection
 import com.google.android.material.bottomnavigation.BottomNavigationView
@@ -92,11 +93,11 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
     @Volatile private var isActivityPaused = false
 
     // =================================================================
-    // ON-DEVICE CV, WIDE CAMERA & TRACKING
+    // ON-DEVICE CV, WIDE CAMERA, TRACKING & HAPTICS
     // =================================================================
     private var dualPipeline: DualYoloPipeline? = null
     private val tracker: SortTracker get() = CvPipelineSingleton.tracker
-    private val openVocabTracker = com.example.hans.ml.tracker.OpenVocabTracker()
+    private val openVocabTracker = OpenVocabTracker()
     private val cvExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     private val isInferring = AtomicBoolean(false)
     private lateinit var wideCameraManager: WideCameraManager
@@ -110,8 +111,9 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
     // On-Device AI Brain (Direct LLM Client)
     private var localBrain: LocalHansBrain? = null
 
-    // Local Haptic Guidance Arbitrator
+    // Haptic Arbitration & Phone Vibrator
     private lateinit var hapticArbitrator: HapticArbitrator
+    private lateinit var phoneHaptics: PhoneHapticFeedback
 
     // Networking
     private val client = OkHttpClient()
@@ -182,7 +184,8 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
         braceletManager = BleManagerSingleton.getBraceletManager(this)
         beltManager = BleManagerSingleton.getBeltManager(this)
 
-        hapticArbitrator = HapticArbitrator(braceletManager, beltManager)
+        phoneHaptics = PhoneHapticFeedback(this)
+        hapticArbitrator = HapticArbitrator(braceletManager, beltManager, phoneHaptics)
         wideCameraManager = WideCameraManager(this)
 
         initLocalCvEngine()
@@ -277,7 +280,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                 }
             },
             onGraspConfirmed = { graspedItem ->
-                // Fires when user says "Got it" / "Grasped" or tool executes
                 runOnUiThread {
                     hapticArbitrator.sendGraspConfirmationPulse()
                     openVocabTracker.clearTarget()
@@ -336,7 +338,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
             return@withContext emptyList()
         }
 
-        // --- Save raw snapshot if toggle is enabled ---
         val settingsPrefs = getSharedPreferences("HansSettingsPrefs", MODE_PRIVATE)
         val shouldSave = settingsPrefs.getBoolean("SAVE_DEBUG_IMAGES", false)
 
@@ -346,7 +347,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
             }
         }
 
-        // --- Run YOLO on wide snapshot ---
         val pipeline = dualPipeline
         val (detectedLabels, detections) = withContext(Dispatchers.Default) {
             if (pipeline != null) {
@@ -362,7 +362,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
             }
         }
 
-        // --- Burn boxes and save annotated photo if toggle is enabled ---
         var annotatedBitmapRef: Bitmap? = null
         if (shouldSave) {
             withContext(Dispatchers.IO) {
@@ -376,7 +375,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
             }
         }
 
-        // Display preview on screen for 2.0s
         val displayBitmap = annotatedBitmapRef ?: snapshot
         ivWidePreview?.setImageBitmap(displayBitmap)
         ivWidePreview?.visibility = View.VISIBLE
@@ -498,7 +496,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                     // 3. Kalman Tracking
                     val rawTracked = tracker.update(result.mergedDetections)
 
-                    // 4. Metric Depth Extraction
+                    // 4. Metric Depth Extraction (3x3 median patch with sensor rotation)
                     if (depthImgRef != null) {
                         DepthUtils.assignDepthToDetections(
                             depthImage = depthImgRef,
@@ -507,10 +505,8 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                         )
                     }
 
-                    // 4b. PERSISTENT OPEN-VOCABULARY BINDING:
-                    // Binds 'blue cup' to the nearest 'cup', or maintains persistent spatial track
+                    // 4b. Persistent Open-Vocabulary Tracking (Hands-on Occlusion Memory)
                     val trackedDetections = openVocabTracker.processFrame(rawTracked)
-
                     localBrain?.latestDetections = trackedDetections
 
                     // 5. Local Haptic Navigation
@@ -522,22 +518,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                         detections = trackedDetections,
                         vibrationIntensities = intensities
                     )
-
-                    if (guidanceState.isGrasped) {
-                        val graspedItem = activeTarget
-                        openVocabTracker.clearTarget()
-                        localBrain?.activeTarget = "none"
-                        localBrain?.targetList?.remove(graspedItem)
-                        if (graspedItem != "none") {
-                            localBrain?.graspedObjectsHistory?.add(graspedItem)
-                        }
-
-                        runOnUiThread {
-                            val msg = "Grasped $graspedItem."
-                            tvAiResponse.text = "AI: $msg"
-                            tts.speak(msg, TextToSpeech.QUEUE_FLUSH, null, "GRASP_DONE")
-                        }
-                    }
 
                     frameCounter++
                     val now = SystemClock.uptimeMillis()
@@ -601,7 +581,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
             }
             socket.send(jsonArray.toString())
         } catch (e: Exception) {
-            // Ignore socket telemetry errors
+            // Ignore
         }
     }
 
@@ -612,6 +592,13 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
         super.onResume()
         isActivityPaused = false
         isTextureSet = false
+
+        // Synchronize Settings toggles
+        val settingsPrefs = getSharedPreferences("HansSettingsPrefs", Context.MODE_PRIVATE)
+        val usePhoneHaptics = settingsPrefs.getBoolean("USE_PHONE_HAPTICS", false)
+        phoneHaptics.isEnabled = usePhoneHaptics
+        hapticArbitrator.usePhoneHaptics = usePhoneHaptics
+        Log.i("HANS", "Haptic Configuration synced: usePhoneHaptics=$usePhoneHaptics")
 
         if (arSession == null && allPermissionsGranted()) {
             try {
@@ -1027,10 +1014,12 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
 
     private val requestPermissionsLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
-            if (permissions.all { it.value }) {
+            // Check if all requested runtime permissions were granted
+            val allGranted = permissions.entries.all { it.value }
+            if (allGranted) {
                 initSystem()
             } else {
-                Toast.makeText(this, "Permissions required", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Permissions required to run HANS", Toast.LENGTH_SHORT).show()
                 finish()
             }
         }

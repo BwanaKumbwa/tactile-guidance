@@ -18,7 +18,8 @@ data class GuidanceState(
 
 class HapticArbitrator(
     private val braceletManager: BleManager,
-    private val beltManager: BleManager
+    private val beltManager: BleManager,
+    private val phoneHaptics: PhoneHapticFeedback? = null
 ) {
     companion object {
         private const val TAG = "HapticArbitrator"
@@ -29,7 +30,10 @@ class HapticArbitrator(
         private const val ON_TARGET_DISTANCE_THRESHOLD = 0.045f // Hand directly centered over object
     }
 
-    // Manual Grasp Mode: Disabled by default so guidance stays active until user confirms
+    // Toggle between BLE bracelet vectors and Phone "Hot/Cold" distance vibration
+    var usePhoneHaptics: Boolean = false
+
+    // Manual Grasp Mode: false by default so guidance stays active until confirmed
     var enableAutoGrasp: Boolean = false
 
     private var lastBraceletCmdTimestamp = 0L
@@ -83,6 +87,7 @@ class HapticArbitrator(
             if (isBraceletVibrating) {
                 stopBracelet()
             }
+            phoneHaptics?.stop()
 
             val targetXc = targetDet.boundingBox.centerX()
             val shouldRefreshBelt = !isBeltVibrating || (now - lastBeltCmdTimestamp) >= BELT_REFRESH_INTERVAL_MS
@@ -97,7 +102,7 @@ class HapticArbitrator(
         }
 
         // =====================================================================
-        // Strategy B: Target is close (<= 70 cm) -> Bracelet guidance
+        // Strategy B: Target is close (<= 70 cm) -> Bracelet or Phone guidance
         // =====================================================================
         if (isBeltVibrating) {
             stopBelt()
@@ -107,7 +112,8 @@ class HapticArbitrator(
             if (isBraceletVibrating) {
                 stopBracelet()
             }
-            return GuidanceState(true, activeTarget, targetDepth, 0f, "bracelet_waiting_for_hand", false)
+            phoneHaptics?.stop()
+            return GuidanceState(true, activeTarget, targetDepth, 0f, "waiting_for_hand", false)
         }
 
         val hx = handDet.boundingBox.centerX()
@@ -125,7 +131,10 @@ class HapticArbitrator(
         val handDepth = if (handDet.depth > 0) handDet.depth else targetDepth
         val depthDelta = Math.abs(targetDepth - handDepth)
 
-        // Automatic grasp trigger (only runs if enabled)
+        // Compute 3D Euclidean metric separation
+        val distance3D = Math.sqrt((distance2D * targetDepth * distance2D * targetDepth + depthDelta * depthDelta).toDouble()).toFloat()
+
+        // Automatic grasp trigger (only runs if explicitly enabled)
         if (enableAutoGrasp && distance2D < 0.12f && depthDelta < GRASP_THRESHOLD_METERS) {
             isGrasped = true
             graspCooldownUntil = now + 1500L
@@ -133,7 +142,20 @@ class HapticArbitrator(
             return GuidanceState(false, activeTarget, targetDepth, angleDeg, "grasped", true)
         }
 
-        // Manual mode: If hand is directly on top of the target, send centered on-target cue
+        // -----------------------------------------------------------------
+        // BRANCH 1: DEV MODE -> Use Phone "Hot/Cold" Cadence Vibration
+        // -----------------------------------------------------------------
+        if (usePhoneHaptics && phoneHaptics != null) {
+            stopBracelet()
+            phoneHaptics.updateProximityFeedback(distance3D)
+            return GuidanceState(true, activeTarget, targetDepth, 0f, "phone_haptics", false)
+        }
+
+        // -----------------------------------------------------------------
+        // BRANCH 2: PRODUCTION -> 4-Quadrant Tactile BLE Bracelet Guidance
+        // -----------------------------------------------------------------
+        phoneHaptics?.stop()
+
         if (distance2D < ON_TARGET_DISTANCE_THRESHOLD) {
             if ((now - lastBraceletCmdTimestamp) >= BRACELET_THROTTLE_MS) {
                 lastBraceletCmdTimestamp = now
@@ -143,7 +165,6 @@ class HapticArbitrator(
             return GuidanceState(true, activeTarget, targetDepth, 0f, "on_target", false)
         }
 
-        // Continuous directional guidance toward object
         if ((now - lastBraceletCmdTimestamp) >= BRACELET_THROTTLE_MS) {
             lastBraceletCmdTimestamp = now
             isBraceletVibrating = true
@@ -153,9 +174,6 @@ class HapticArbitrator(
         return GuidanceState(true, activeTarget, targetDepth, angleDeg, "bracelet", false)
     }
 
-    /**
-     * Gentle centered pulse when hand is directly over the target.
-     */
     private fun sendOnTargetCenteredPulse(intensities: Map<String, Int>) {
         if (!braceletManager.isConnected()) return
         val intensity = (intensities["top"] ?: 50).coerceIn(10, 60)
@@ -228,12 +246,14 @@ class HapticArbitrator(
     }
 
     /**
-     * Public method fired when grasp is confirmed manually by the user.
+     * Confirmation double-pulse fired on manual user confirmation.
      */
     fun sendGraspConfirmationPulse() {
         stopAllFeedback()
 
-        if (braceletManager.isConnected()) {
+        if (usePhoneHaptics && phoneHaptics != null) {
+            phoneHaptics.fireTargetReachedPulse()
+        } else if (braceletManager.isConnected()) {
             val graspCmd = byteArrayOf(
                 0x0E.toByte(),
                 0x04.toByte(),
@@ -280,5 +300,6 @@ class HapticArbitrator(
     fun stopAllFeedback() {
         stopBracelet()
         stopBelt()
+        phoneHaptics?.stop()
     }
 }

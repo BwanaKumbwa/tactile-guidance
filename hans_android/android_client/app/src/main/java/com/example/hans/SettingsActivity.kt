@@ -56,15 +56,21 @@ class SettingsActivity : AppCompatActivity() {
             startActivity(Intent(this, InformationActivity::class.java))
         }
 
-        // Debug Image Saving Toggle
-        // Uses getIdentifier so it compiles whether or not the switch is present in layout yet
-        val switchId = resources.getIdentifier("switchSaveDebug", "id", packageName)
-        val switchSaveDebug = if (switchId != 0) findViewById<SwitchMaterial>(switchId) else null
+        // SharedPreferences for development options
         val settingsPrefs = getSharedPreferences("HansSettingsPrefs", Context.MODE_PRIVATE)
 
+        // Switch 1: Save Debug Photos
+        val switchSaveDebug = findViewById<SwitchMaterial?>(R.id.switchSaveDebug)
         switchSaveDebug?.isChecked = settingsPrefs.getBoolean("SAVE_DEBUG_IMAGES", false)
         switchSaveDebug?.setOnCheckedChangeListener { _, isChecked ->
             settingsPrefs.edit().putBoolean("SAVE_DEBUG_IMAGES", isChecked).apply()
+        }
+
+        // Switch 2: Phone Haptics (Hot/Cold)
+        val switchPhoneVib = findViewById<SwitchMaterial?>(R.id.switchPhoneVib)
+        switchPhoneVib?.isChecked = settingsPrefs.getBoolean("USE_PHONE_HAPTICS", false)
+        switchPhoneVib?.setOnCheckedChangeListener { _, isChecked ->
+            settingsPrefs.edit().putBoolean("USE_PHONE_HAPTICS", isChecked).apply()
         }
     }
 
