@@ -23,11 +23,14 @@ class HapticArbitrator(
     companion object {
         private const val TAG = "HapticArbitrator"
         private const val BRACELET_THROTTLE_MS = 140L
-        // Matches belt_adapter.py: 2-second vibration block refreshed every 1 second
         private const val BELT_REFRESH_INTERVAL_MS = 1000L
         private const val GRASP_THRESHOLD_METERS = 0.09f
         private const val BELT_DISTANCE_THRESHOLD = 0.70f // 70 cm boundary
+        private const val ON_TARGET_DISTANCE_THRESHOLD = 0.045f // Hand directly centered over object
     }
+
+    // Manual Grasp Mode: Disabled by default so guidance stays active until user confirms
+    var enableAutoGrasp: Boolean = false
 
     private var lastBraceletCmdTimestamp = 0L
     private var lastBeltCmdTimestamp = 0L
@@ -59,7 +62,11 @@ class HapticArbitrator(
             }
         }
 
-        val targetDet = detections.firstOrNull { it.label.equals(activeTarget, ignoreCase = true) && it.classId < 80 }
+        // Match target either by exact label or open-vocabulary alias
+        val targetDet = detections.firstOrNull {
+            it.label.equals(activeTarget, ignoreCase = true) ||
+            (activeTarget.contains(it.label, ignoreCase = true) && it.classId < 80)
+        }
         val handDet = detections.firstOrNull { it.classId >= 80 }
 
         if (targetDet == null) {
@@ -118,13 +125,25 @@ class HapticArbitrator(
         val handDepth = if (handDet.depth > 0) handDet.depth else targetDepth
         val depthDelta = Math.abs(targetDepth - handDepth)
 
-        if (distance2D < 0.12f && depthDelta < GRASP_THRESHOLD_METERS) {
+        // Automatic grasp trigger (only runs if enabled)
+        if (enableAutoGrasp && distance2D < 0.12f && depthDelta < GRASP_THRESHOLD_METERS) {
             isGrasped = true
             graspCooldownUntil = now + 1500L
             sendGraspConfirmationPulse()
             return GuidanceState(false, activeTarget, targetDepth, angleDeg, "grasped", true)
         }
 
+        // Manual mode: If hand is directly on top of the target, send centered on-target cue
+        if (distance2D < ON_TARGET_DISTANCE_THRESHOLD) {
+            if ((now - lastBraceletCmdTimestamp) >= BRACELET_THROTTLE_MS) {
+                lastBraceletCmdTimestamp = now
+                isBraceletVibrating = true
+                sendOnTargetCenteredPulse(vibrationIntensities)
+            }
+            return GuidanceState(true, activeTarget, targetDepth, 0f, "on_target", false)
+        }
+
+        // Continuous directional guidance toward object
         if ((now - lastBraceletCmdTimestamp) >= BRACELET_THROTTLE_MS) {
             lastBraceletCmdTimestamp = now
             isBraceletVibrating = true
@@ -135,44 +154,45 @@ class HapticArbitrator(
     }
 
     /**
-     * Sends the FeelSpace naviBelt vibration command matching virtual_belt.py:
-     * - Opcode: 0x40
-     * - Channel Index: 1
-     * - Orientation Type: 1 (Motor Index / Bitmask)
-     * - Front: 0b010000 (16), Left: 0b100000 (32), Right: 0b001000 (8)
+     * Gentle centered pulse when hand is directly over the target.
      */
+    private fun sendOnTargetCenteredPulse(intensities: Map<String, Int>) {
+        if (!braceletManager.isConnected()) return
+        val intensity = (intensities["top"] ?: 50).coerceIn(10, 60)
+        val pulseDuration = 90
+
+        val command = byteArrayOf(
+            0x0E.toByte(),
+            0x04.toByte(),
+            0x03.toByte(), // Top motor
+            intensity.toByte(),
+            ((pulseDuration shr 8) and 0xFF).toByte(),
+            (pulseDuration and 0xFF).toByte()
+        )
+        braceletManager.writeRawCommand(command)
+    }
+
     private fun sendBeltDirectionCommand(targetXc: Float, intensity: Int) {
         if (!beltManager.isConnected()) return
 
-        // 6-bit feelSpace motor mask from legacy virtual_belt.py:
-        // Left: 0b100000 (32), Front: 0b010000 (16), Right: 0b001000 (8)
         val motorMask = when {
-            targetXc < 0.33f -> 0b100000 // Left motor
-            targetXc > 0.66f -> 0b001000 // Right motor
-            else -> 0b010000             // Front motor
+            targetXc < 0.33f -> 0b100000
+            targetXc > 0.66f -> 0b001000
+            else -> 0b010000
         }
 
         val clampedIntensity = intensity.coerceIn(10, 100)
-        val onDurationMs = 2000 // 2-second block refreshed every 1.0 second
+        val onDurationMs = 2000
 
         val command = byteArrayOf(
-            0x40.toByte(),                          // Opcode: Vibrate
-            0x01.toByte(),                          // Channel index 1
-            0x01.toByte(),                          // Orientation Type 1 = Motor bitmask
-            (motorMask and 0xFF).toByte(),          // Motor mask low byte
-            ((motorMask shr 8) and 0xFF).toByte(),  // Motor mask high byte
-            clampedIntensity.toByte(),              // Intensity
-            (onDurationMs and 0xFF).toByte(),       // Duration low byte
-            ((onDurationMs shr 8) and 0xFF).toByte(),// Duration high byte
-            0x01.toByte(),                          // 1 pulse iteration
-            0x01.toByte(),                          // 1 series iteration
-            (onDurationMs and 0xFF).toByte(),       // Pulse period low
-            ((onDurationMs shr 8) and 0xFF).toByte(),// Pulse period high
-            (onDurationMs and 0xFF).toByte(),       // Series period low
-            ((onDurationMs shr 8) and 0xFF).toByte(),// Series period high
-            0x00.toByte(),                          // Timer option (Reset)
-            0x00.toByte(),                          // Not exclusive
-            0x00.toByte()                           // Don't clear others
+            0x40.toByte(), 0x01.toByte(), 0x01.toByte(),
+            (motorMask and 0xFF).toByte(), ((motorMask shr 8) and 0xFF).toByte(),
+            clampedIntensity.toByte(),
+            (onDurationMs and 0xFF).toByte(), ((onDurationMs shr 8) and 0xFF).toByte(),
+            0x01.toByte(), 0x01.toByte(),
+            (onDurationMs and 0xFF).toByte(), ((onDurationMs shr 8) and 0xFF).toByte(),
+            (onDurationMs and 0xFF).toByte(), ((onDurationMs shr 8) and 0xFF).toByte(),
+            0x00.toByte(), 0x00.toByte(), 0x00.toByte()
         )
 
         beltManager.writeRawCommand(command)
@@ -207,7 +227,12 @@ class HapticArbitrator(
         braceletManager.writeRawCommand(command)
     }
 
-    private fun sendGraspConfirmationPulse() {
+    /**
+     * Public method fired when grasp is confirmed manually by the user.
+     */
+    fun sendGraspConfirmationPulse() {
+        stopAllFeedback()
+
         if (braceletManager.isConnected()) {
             val graspCmd = byteArrayOf(
                 0x0E.toByte(),
@@ -221,7 +246,6 @@ class HapticArbitrator(
         }
 
         if (beltManager.isConnected()) {
-            // Signal grasped across all motors (0b111111 = 63)
             val onDurationMs = 600
             val beltGraspCmd = byteArrayOf(
                 0x40.toByte(), 0x01.toByte(), 0x01.toByte(),

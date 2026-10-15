@@ -2,6 +2,7 @@ package com.example.hans.ai
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.RectF
 import android.util.Base64
 import android.util.Log
 import com.example.hans.ml.tracker.TrackedDetection
@@ -15,6 +16,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.TimeUnit
+import java.util.regex.Pattern
 import kotlin.math.max
 import kotlin.math.min
 
@@ -24,19 +26,22 @@ class LocalHansBrain(
     private val apiKey: String,
     private val model: String,
     private val hardwareStatusProvider: () -> Pair<Boolean, Boolean>,
-    private val wideScanProvider: (suspend () -> List<String>)? = null
+    private val wideScanProvider: (suspend () -> List<String>)? = null,
+    private val wideImageProvider: (suspend () -> Bitmap?)? = null,
+    private val openVocabTargetSetter: ((String, RectF) -> Unit)? = null,
+    private val diagnosticListener: ((String) -> Unit)? = null,
+    private val onGraspConfirmed: ((String) -> Unit)? = null  // <-- Added callback
 ) {
     companion object {
         private const val TAG = "LocalHansBrain"
     }
 
     private val client = OkHttpClient.Builder()
-        .connectTimeout(6, TimeUnit.SECONDS)
-        .readTimeout(12, TimeUnit.SECONDS)
-        .writeTimeout(6, TimeUnit.SECONDS)
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(45, TimeUnit.SECONDS)
+        .writeTimeout(15, TimeUnit.SECONDS)
         .build()
 
-    // Valid COCO target classes (Excluding 'person')
     val validTargetClasses: Set<String> = setOf(
         "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat",
         "traffic light", "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat",
@@ -70,16 +75,15 @@ class LocalHansBrain(
 
             CRITICAL SCOPE RESTRICTIONS:
             1. You are strictly a physical environment and navigation assistant.
-            2. If the user asks a question completely unrelated to navigation, visible objects, or system settings, politely inform them that this is outside your scope.
-            3. Answer in 1-2 concise, natural sentences. Avoid conversational pleasantries.
-            4. Available tools:
+            2. Answer in 1-2 concise, clear sentences. Avoid conversational filler.
+            3. Available tools:
                - 'set_target': when user wants to find, locate, grab, or guide to an object.
                - 'get_visible_objects': when user asks what is directly in front of them right now.
-               - 'scan_surroundings': when user asks what is around them, in the wider room, or asks to look around using the ultra-wide lens.
+               - 'scan_surroundings': when user asks what is around them, in the wider room, or to look around.
                - 'get_hardware_status': when user asks if the bracelet or belt is connected.
                - 'mark_grasped': when user says they grabbed or found the object.
                - 'clear_target_list': when user asks to stop searching.
-            5. Append speech rate tag if requested: [SPEED:SLOW], [SPEED:NORMAL], or [SPEED:FAST].
+            4. If the user asks for a specific target NOT in your standard list (like 'keys', 'wallet', 'pen', 'glasses'), use 'locate_open_vocabulary_target'.
         """.trimIndent()
 
         conversationHistory.put(JSONObject().apply {
@@ -89,6 +93,25 @@ class LocalHansBrain(
     }
 
     suspend fun processUserSpeech(userText: String): String = withContext(Dispatchers.IO) {
+        val lowerText = userText.lowercase().trim()
+
+        if (lowerText.contains("look around") || lowerText.contains("describe the room") || lowerText.contains("describe surroundings")) {
+            return@withContext performMultimodalSceneDescription()
+        }
+
+        if (lowerText.startsWith("find") || lowerText.startsWith("where is") || lowerText.startsWith("locate")) {
+            val potentialItem = lowerText.replace("find", "")
+                .replace("where is", "")
+                .replace("locate", "")
+                .replace("the", "")
+                .replace("my", "")
+                .trim()
+
+            if (potentialItem.isNotBlank() && matchValidTarget(potentialItem) == null) {
+                return@withContext performOpenVocabularyGrounding(potentialItem)
+            }
+        }
+
         if (apiUrl.isBlank() || apiKey.isBlank()) {
             return@withContext handleLocalFallbackCommand(userText)
         }
@@ -106,7 +129,7 @@ class LocalHansBrain(
             val toolCalls = message.optJSONArray("tool_calls")
 
             if (toolCalls == null || toolCalls.length() == 0) {
-                val content = message.optString("content", "Understood.")
+                val content = extractCleanText(message) ?: "Understood."
                 conversationHistory.put(JSONObject().apply {
                     put("role", "assistant")
                     put("content", content)
@@ -134,14 +157,71 @@ class LocalHansBrain(
             }
 
             val finalJson = callLlmEndpoint()
-            val finalContent = finalJson?.optJSONArray("choices")?.optJSONObject(0)
-                ?.optJSONObject("message")?.optString("content", "Done.") ?: "Done."
-
-            return@withContext finalContent
+            val finalMsg = finalJson?.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")
+            return@withContext extractCleanText(finalMsg) ?: "Done."
         } catch (e: Exception) {
-            Log.w(TAG, "LLM Gateway unavailable, using local rules: ${e.message}")
+            Log.w(TAG, "LLM Gateway error: ${e.message}")
             return@withContext handleLocalFallbackCommand(userText)
         }
+    }
+
+    private suspend fun performMultimodalSceneDescription(): String {
+        diagnosticListener?.invoke("Capturing wide snapshot...")
+        val snapshot = wideImageProvider?.invoke()
+        if (snapshot == null) {
+            diagnosticListener?.invoke("Error: Snapshot was null")
+            return "Camera snapshot unavailable."
+        }
+
+        diagnosticListener?.invoke("Encoding image (${snapshot.width}x${snapshot.height})...")
+        val base64 = bitmapToBase64(snapshot)
+        val prompt = "You are acting as the eyes of a visually impaired user. Look at this photo and describe the room concisely in 2 sentences. Mention major furniture, key objects, and walking paths."
+
+        diagnosticListener?.invoke("Calling $model...")
+        val response = callLlmVisionPrompt(base64, prompt)
+        return response ?: "I was unable to describe the scene."
+    }
+
+    private suspend fun performOpenVocabularyGrounding(itemName: String): String {
+        diagnosticListener?.invoke("Searching for $itemName...")
+        val snapshot = wideImageProvider?.invoke() ?: return "Camera snapshot unavailable to search for $itemName."
+        val base64 = bitmapToBase64(snapshot)
+
+        val prompt = """
+            Locate the '$itemName' in this image.
+            If the '$itemName' is clearly visible, return ONLY its normalized 2D bounding box in JSON:
+            {"found": true, "box_2d": [ymin, xmin, ymax, xmax]} where coordinates are floats between 0.0 and 1.0.
+            If it is NOT visible, return: {"found": false}
+        """.trimIndent()
+
+        val rawResponse = callLlmVisionPrompt(base64, prompt) ?: return "Could not reach vision model for $itemName."
+
+        try {
+            val matcher = Pattern.compile("\\{.*\\}", Pattern.DOTALL).matcher(rawResponse)
+            if (matcher.find()) {
+                val jsonStr = matcher.group()
+                val parsed = JSONObject(jsonStr)
+                if (parsed.optBoolean("found", false)) {
+                    val boxArray = parsed.getJSONArray("box_2d")
+                    val ymin = boxArray.getDouble(0).toFloat()
+                    val xmin = boxArray.getDouble(1).toFloat()
+                    val ymax = boxArray.getDouble(2).toFloat()
+                    val xmax = boxArray.getDouble(3).toFloat()
+
+                    val targetRect = RectF(xmin, ymin, xmax, ymax)
+                    activeTarget = itemName
+                    targetList.clear()
+                    targetList.add(itemName)
+
+                    openVocabTargetSetter?.invoke(itemName, targetRect)
+                    return "Found your $itemName. Guiding you towards it."
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed parsing open-vocabulary bounding box: ${e.message}")
+        }
+
+        return "I scanned the room, but I cannot see the $itemName right now."
     }
 
     private suspend fun executeLocalTool(name: String, args: JSONObject): String {
@@ -157,7 +237,7 @@ class LocalHansBrain(
                     listMode = "unordered"
                     "Target successfully set to $matched."
                 } else {
-                    "'$requested' is not a recognized object class."
+                    performOpenVocabularyGrounding(requested)
                 }
             }
 
@@ -174,16 +254,7 @@ class LocalHansBrain(
             }
 
             "scan_surroundings" -> {
-                if (wideScanProvider != null) {
-                    val detectedInWide = wideScanProvider.invoke()
-                    if (detectedInWide.isEmpty()) {
-                        "Wide camera scan complete: no clear objects detected in peripheral surroundings."
-                    } else {
-                        "Wide-angle scan shows: ${detectedInWide.joinToString(", ")}."
-                    }
-                } else {
-                    "Wide camera scanning is not available."
-                }
+                performMultimodalSceneDescription()
             }
 
             "get_hardware_status" -> {
@@ -200,7 +271,8 @@ class LocalHansBrain(
                     targetList.remove(prev)
                 }
                 activeTarget = if (targetList.isNotEmpty() && listMode == "ordered") targetList[0] else "none"
-                "Object marked as grasped."
+                onGraspConfirmed?.invoke(prev)
+                if (prev != "none") "Marked $prev as grasped." else "Grasp confirmed."
             }
 
             "clear_target_list" -> {
@@ -263,16 +335,7 @@ class LocalHansBrain(
 
         return when {
             lower.contains("around") || lower.contains("surroundings") || lower.contains("room") || lower.contains("look around") -> {
-                if (wideScanProvider != null) {
-                    val wideResults = wideScanProvider.invoke()
-                    if (wideResults.isNotEmpty()) {
-                        "Around you: ${wideResults.joinToString(", ")}."
-                    } else {
-                        "No distinct objects detected in the wider room."
-                    }
-                } else {
-                    "Wide scanning not supported."
-                }
+                performMultimodalSceneDescription()
             }
 
             lower.contains("hardware") || lower.contains("bracelet") || lower.contains("belt") -> {
@@ -296,13 +359,19 @@ class LocalHansBrain(
                     activeTarget = matched
                     "Looking for $matched."
                 } else {
-                    "'$item' is not recognized."
+                    performOpenVocabularyGrounding(item)
                 }
             }
 
-            lower.contains("got it") || lower.contains("grasped") -> {
-                activeTarget = "none"
-                "Object marked as grasped."
+            lower.contains("got it") || lower.contains("grasped") || lower.contains("picked it up") || lower.contains("have it") || lower.contains("found it") -> {
+                val prev = activeTarget
+                if (prev != "none") {
+                    graspedObjectsHistory.add(prev)
+                    targetList.remove(prev)
+                }
+                activeTarget = if (targetList.isNotEmpty() && listMode == "ordered") targetList[0] else "none"
+                onGraspConfirmed?.invoke(prev)
+                if (prev != "none") "Grasped $prev." else "Grasp confirmed."
             }
 
             lower.contains("stop") || lower.contains("cancel") -> {
@@ -315,6 +384,95 @@ class LocalHansBrain(
         }
     }
 
+    private fun bitmapToBase64(bitmap: Bitmap, quality: Int = 75): String {
+        val outputStream = ByteArrayOutputStream()
+        bitmap.compress(Bitmap.CompressFormat.JPEG, quality, outputStream)
+        val byteArray = outputStream.toByteArray()
+        return Base64.encodeToString(byteArray, Base64.NO_WRAP)
+    }
+
+    /**
+     * Multimodal vision call with explicit diagnostic logging matching server_hans.py.
+     */
+    private fun callLlmVisionPrompt(base64Image: String, promptText: String): String? {
+        val endpointUrl = "${apiUrl.trimEnd('/')}/v1/chat/completions"
+
+        val contentArray = JSONArray().apply {
+            put(JSONObject().apply {
+                put("type", "text")
+                put("text", promptText)
+            })
+            put(JSONObject().apply {
+                put("type", "image_url")
+                put("image_url", JSONObject().apply {
+                    put("url", "data:image/jpeg;base64,$base64Image")
+                })
+            })
+        }
+
+        val messages = JSONArray().apply {
+            put(JSONObject().apply {
+                put("role", "user")
+                put("content", contentArray)
+            })
+        }
+
+        val payload = JSONObject().apply {
+            put("model", model)
+            put("messages", messages)
+            put("max_tokens", 800)
+            put("temperature", 0.2)
+            put("stream", false)
+            // Disable reasoning tokens on Qwen3.5 to prevent token exhaustion
+            put("enable_thinking", false)
+            put("chat_template_kwargs", JSONObject().apply {
+                put("enable_thinking", false)
+            })
+        }
+
+        Log.i(TAG, "📡 [Vision] Endpoint: $endpointUrl (Model: $model, Image: ${base64Image.length / 1024} KB)")
+
+        val request = Request.Builder()
+            .url(endpointUrl)
+            .addHeader("Content-Type", "application/json")
+            .addHeader("Authorization", "Bearer $apiKey")
+            .post(payload.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+
+        return try {
+            client.newCall(request).execute().use { response ->
+                val responseBody = response.body?.string() ?: ""
+
+                if (!response.isSuccessful) {
+                    val errLog = "❌ HTTP ${response.code}: $responseBody"
+                    Log.e(TAG, errLog)
+                    diagnosticListener?.invoke("HTTP ${response.code}: check model name")
+                    null
+                } else {
+                    Log.i(TAG, "✓ Received response from $model: ${responseBody.take(200)}...")
+                    val json = JSONObject(responseBody)
+                    val choice = json.optJSONArray("choices")?.optJSONObject(0)
+                    val message = choice?.optJSONObject("message")
+                    val result = extractCleanText(message)
+
+                    if (result != null) {
+                        diagnosticListener?.invoke("Vision reply received")
+                        result
+                    } else {
+                        Log.w(TAG, "Could not extract text from message: $message")
+                        diagnosticListener?.invoke("Empty reply from model")
+                        null
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            val errLog = "❌ Network failure: ${e.message}"
+            Log.e(TAG, errLog, e)
+            diagnosticListener?.invoke("Vision failed: ${e.message}")
+            null
+        }
+    }
+
     private fun callLlmEndpoint(): JSONObject? {
         val endpointUrl = "${apiUrl.trimEnd('/')}/v1/chat/completions"
 
@@ -323,8 +481,9 @@ class LocalHansBrain(
             put("messages", conversationHistory)
             put("tools", getAvailableTools())
             put("tool_choice", "auto")
-            put("max_tokens", 350)
+            put("max_tokens", 500)
             put("temperature", 0.1)
+            put("enable_thinking", false)
         }
 
         val request = Request.Builder()
@@ -337,7 +496,7 @@ class LocalHansBrain(
         return try {
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
-                    Log.e(TAG, "Gateway HTTP Error: ${response.code}")
+                    Log.e(TAG, "Gateway HTTP Error: ${response.code} -> ${response.body?.string()}")
                     null
                 } else {
                     val body = response.body?.string() ?: return null
@@ -348,6 +507,43 @@ class LocalHansBrain(
             Log.w(TAG, "Gateway call error: ${e.message}")
             null
         }
+    }
+
+    /**
+     * Safely extracts text from Qwen3.5 messages, rejecting literal "null" and stripping thinking tags.
+     */
+    private fun extractCleanText(messageObj: JSONObject?): String? {
+        if (messageObj == null) return null
+
+        var raw: String? = null
+
+        // 1. Check standard content
+        if (messageObj.has("content") && !messageObj.isNull("content")) {
+            val c = messageObj.optString("content", "").trim()
+            if (c.isNotBlank() && !c.equals("null", ignoreCase = true)) {
+                raw = c
+            }
+        }
+
+        // 2. Check reasoning_content if content is null/empty
+        if (raw == null && messageObj.has("reasoning_content") && !messageObj.isNull("reasoning_content")) {
+            val r = messageObj.optString("reasoning_content", "").trim()
+            if (r.isNotBlank() && !r.equals("null", ignoreCase = true)) {
+                raw = r
+            }
+        }
+
+        if (raw == null) return null
+
+        // 3. Strip any residual <think> ... </think> blocks
+        var cleaned = raw.replace(Regex("(?s)"), "").trim()
+        
+        // 4. If stripping leaves nothing (e.g. model output only thinking tokens), take the original
+        if (cleaned.isBlank()) {
+            cleaned.trim()
+        }
+
+        return if (cleaned.isNotBlank() && !cleaned.equals("null", ignoreCase = true)) cleaned else null
     }
 
     private fun getAvailableTools(): JSONArray {
@@ -383,7 +579,7 @@ class LocalHansBrain(
                 put("type", "function")
                 put("function", JSONObject().apply {
                     put("name", "scan_surroundings")
-                    put("description", "Uses the ultra-wide angle camera to scan the entire room and peripheral surroundings.")
+                    put("description", "Uses the ultra-wide angle camera to scan and describe the room.")
                     put("parameters", JSONObject().apply { put("type", "object"); put("properties", JSONObject()) })
                 })
             })

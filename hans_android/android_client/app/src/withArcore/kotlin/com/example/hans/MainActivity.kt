@@ -1,10 +1,12 @@
 package com.example.hans
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.RectF
 import android.media.Image
 import android.opengl.GLES20
 import android.opengl.GLSurfaceView
@@ -22,6 +24,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -67,6 +70,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
     // UI Components
     private lateinit var surfaceView: GLSurfaceView
     private lateinit var overlayView: BoundingBoxOverlay
+    private var ivWidePreview: ImageView? = null
     private lateinit var tvStatus: TextView
     private lateinit var tvAiResponse: TextView
     private lateinit var btnPtt: ConstraintLayout
@@ -92,6 +96,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
     // =================================================================
     private var dualPipeline: DualYoloPipeline? = null
     private val tracker: SortTracker get() = CvPipelineSingleton.tracker
+    private val openVocabTracker = com.example.hans.ml.tracker.OpenVocabTracker()
     private val cvExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     private val isInferring = AtomicBoolean(false)
     private lateinit var wideCameraManager: WideCameraManager
@@ -134,6 +139,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
         tvAiResponse = findViewById(R.id.tvAiResponse)
         btnPtt = findViewById(R.id.rootLayout)
         bottomNav = findViewById(R.id.bottomNavigation)
+        ivWidePreview = findViewById(R.id.ivWidePreview)
 
         setupOverlayView()
         addBottomColorBar()
@@ -253,18 +259,44 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
             },
             wideScanProvider = {
                 performWideScan()
+            },
+            wideImageProvider = {
+                captureWideSnapshotWithSaving()
+            },
+            openVocabTargetSetter = { targetLabel, targetBox ->
+                runOnUiThread {
+                    openVocabTracker.setTarget(targetLabel, targetBox)
+                    tvAiResponse.text = "AI: Tracking $targetLabel"
+                    tvStatus.text = "Target locked: $targetLabel"
+                }
+            },
+            diagnosticListener = { statusText ->
+                runOnUiThread {
+                    tvAiResponse.text = "AI: $statusText"
+                    Log.i("HANS_DIAG", statusText)
+                }
+            },
+            onGraspConfirmed = { graspedItem ->
+                // Fires when user says "Got it" / "Grasped" or tool executes
+                runOnUiThread {
+                    hapticArbitrator.sendGraspConfirmationPulse()
+                    openVocabTracker.clearTarget()
+                    val msg = if (graspedItem != "none") "Grasped $graspedItem." else "Grasp confirmed."
+                    tvAiResponse.text = "AI: $msg"
+                    tvStatus.text = "Status: Target completed"
+                    tts.speak(msg, TextToSpeech.QUEUE_FLUSH, null, "GRASP_DONE")
+                }
             }
         )
     }
 
     /**
-     * APPROACH A: SAFE PAUSE-RESUME SNAPSHOT HELPER WITH DUAL SAVING (RAW & ANNOTATED)
+     * APPROACH A: SAFE PAUSE-RESUME ULTRA-WIDE SNAPSHOT WITH DUAL SAVING (RAW & ANNOTATED)
      */
     private suspend fun performWideScan(): List<String> = withContext(Dispatchers.Main) {
         if (isWideScanning) return@withContext emptyList()
         isWideScanning = true
 
-        val ivWidePreview = findViewById<android.widget.ImageView?>(R.id.ivWidePreview)
         tvStatus.text = "📷 Scanning surroundings (Ultra-Wide)..."
 
         var snapshot: Bitmap? = null
@@ -272,13 +304,11 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
 
         if (wideTarget != null) {
             try {
-                // 1. Pause ARCore and GL rendering
                 surfaceView.onPause()
                 try { arSession?.pause() } catch (e: Exception) { Log.w("HANS", "AR pause: $e") }
 
-                kotlinx.coroutines.delay(150)
+                kotlinx.coroutines.delay(120)
 
-                // 2. Capture frame from ultra-wide lens
                 snapshot = withContext(Dispatchers.IO) {
                     wideCameraManager.captureWideSnapshot()
                 }
@@ -286,7 +316,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
             } catch (e: Exception) {
                 Log.e("HANS", "Wide scan capture error", e)
             } finally {
-                // 3. Immediately restore ARCore tracking
                 try {
                     arSession?.resume()
                     surfaceView.onResume()
@@ -307,17 +336,22 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
             return@withContext emptyList()
         }
 
-        // --- STEP 1: Save the RAW copy to gallery ---
-        withContext(Dispatchers.IO) {
-            DebugImageSaver.saveSnapshotToGallery(this@MainActivity, snapshot, "wide_raw")
+        // --- Save raw snapshot if toggle is enabled ---
+        val settingsPrefs = getSharedPreferences("HansSettingsPrefs", MODE_PRIVATE)
+        val shouldSave = settingsPrefs.getBoolean("SAVE_DEBUG_IMAGES", false)
+
+        if (shouldSave) {
+            withContext(Dispatchers.IO) {
+                DebugImageSaver.saveSnapshotToGallery(this@MainActivity, snapshot, "wide_raw")
+            }
         }
 
-        // --- STEP 2: Run YOLO inference on the wide snapshot ---
+        // --- Run YOLO on wide snapshot ---
         val pipeline = dualPipeline
         val (detectedLabels, detections) = withContext(Dispatchers.Default) {
             if (pipeline != null) {
                 val origThresh = pipeline.confThreshold
-                pipeline.confThreshold = 0.25f // Optimized sensitivity for wider angle / smaller peripheral items
+                pipeline.confThreshold = 0.25f
                 val wideResult = pipeline.detect(snapshot)
                 pipeline.confThreshold = origThresh
 
@@ -328,38 +362,92 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
             }
         }
 
-        // --- STEP 3: Draw bounding boxes on a clone & save the ANNOTATED copy ---
+        // --- Burn boxes and save annotated photo if toggle is enabled ---
         var annotatedBitmapRef: Bitmap? = null
-        withContext(Dispatchers.IO) {
-            val (_, annotated) = DebugImageSaver.saveAnnotatedSnapshotToGallery(
-                this@MainActivity,
-                snapshot,
-                detections,
-                "wide_annotated"
-            )
-            annotatedBitmapRef = annotated
+        if (shouldSave) {
+            withContext(Dispatchers.IO) {
+                val (_, annotated) = DebugImageSaver.saveAnnotatedSnapshotToGallery(
+                    this@MainActivity,
+                    snapshot,
+                    detections,
+                    "wide_annotated"
+                )
+                annotatedBitmapRef = annotated
+            }
         }
 
-        // --- STEP 4: Show the annotated image in the on-screen preview ---
+        // Display preview on screen for 2.0s
         val displayBitmap = annotatedBitmapRef ?: snapshot
         ivWidePreview?.setImageBitmap(displayBitmap)
         ivWidePreview?.visibility = View.VISIBLE
 
         tvStatus.text = if (detectedLabels.isNotEmpty()) {
-            "Wide detected (${detections.size}): ${detectedLabels.joinToString(", ")}"
+            "Wide detected: ${detectedLabels.joinToString(", ")}"
         } else {
             "Wide: No objects recognized"
         }
 
-        // Dismiss preview after 2.5 seconds and clean up
         lifecycleScope.launch(Dispatchers.Main) {
-            kotlinx.coroutines.delay(2500)
+            kotlinx.coroutines.delay(2000)
             ivWidePreview?.visibility = View.GONE
             snapshot.recycle()
             annotatedBitmapRef?.recycle()
         }
 
         return@withContext detectedLabels
+    }
+
+    /**
+     * Captures a single wide snapshot for Multimodal VLM analysis and guarantees saving if enabled.
+     */
+    private suspend fun captureWideSnapshotWithSaving(): Bitmap? = withContext(Dispatchers.Main) {
+        if (isWideScanning) return@withContext null
+        isWideScanning = true
+
+        tvStatus.text = "📷 Capturing wide snapshot..."
+
+        var snapshot: Bitmap? = null
+        try {
+            surfaceView.onPause()
+            try { arSession?.pause() } catch (e: Exception) { Log.w("HANS", "AR pause: $e") }
+
+            kotlinx.coroutines.delay(120)
+
+            snapshot = withContext(Dispatchers.IO) {
+                wideCameraManager.captureWideSnapshot()
+            }
+        } catch (e: Exception) {
+            Log.e("HANS", "Capture error: $e")
+        } finally {
+            try {
+                arSession?.resume()
+                surfaceView.onResume()
+            } catch (e: Exception) {
+                Log.e("HANS", "AR resume error: $e")
+            }
+            isWideScanning = false
+        }
+
+        if (snapshot != null) {
+            val settingsPrefs = getSharedPreferences("HansSettingsPrefs", MODE_PRIVATE)
+            val shouldSave = settingsPrefs.getBoolean("SAVE_DEBUG_IMAGES", false)
+
+            if (shouldSave) {
+                withContext(Dispatchers.IO) {
+                    val saved = DebugImageSaver.saveSnapshotToGallery(this@MainActivity, snapshot, "wide_raw")
+                    Log.i("HANS", "📸 Saved raw snapshot to gallery: $saved")
+                }
+            }
+
+            ivWidePreview?.setImageBitmap(snapshot)
+            ivWidePreview?.visibility = View.VISIBLE
+            lifecycleScope.launch(Dispatchers.Main) {
+                kotlinx.coroutines.delay(1800)
+                ivWidePreview?.visibility = View.GONE
+            }
+        }
+
+        return@withContext snapshot
     }
 
     private fun initSystem() {
@@ -397,25 +485,35 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                 try {
                     if (isActivityPaused || isWideScanning) return@execute
 
+                    // 1. Zero-Copy YUV -> Direct TFLite FloatBuffer conversion
                     CameraImageConverter.yuvToNormalizedRgbBuffer(
                         image = rgbImgRef,
                         targetSize = 640,
                         outputBuffer = pipeline.objInputBuffer
                     )
 
+                    // 2. Dual-Model Inference
                     val result = pipeline.detectDirect()
-                    val trackedDetections = tracker.update(result.mergedDetections)
 
+                    // 3. Kalman Tracking
+                    val rawTracked = tracker.update(result.mergedDetections)
+
+                    // 4. Metric Depth Extraction
                     if (depthImgRef != null) {
                         DepthUtils.assignDepthToDetections(
                             depthImage = depthImgRef,
-                            detections = trackedDetections,
+                            detections = rawTracked,
                             sensorRotationDegrees = 90
                         )
                     }
 
+                    // 4b. PERSISTENT OPEN-VOCABULARY BINDING:
+                    // Binds 'blue cup' to the nearest 'cup', or maintains persistent spatial track
+                    val trackedDetections = openVocabTracker.processFrame(rawTracked)
+
                     localBrain?.latestDetections = trackedDetections
 
+                    // 5. Local Haptic Navigation
                     val activeTarget = localBrain?.activeTarget ?: "none"
                     val intensities = loadIntensityMap()
 
@@ -427,6 +525,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
 
                     if (guidanceState.isGrasped) {
                         val graspedItem = activeTarget
+                        openVocabTracker.clearTarget()
                         localBrain?.activeTarget = "none"
                         localBrain?.targetList?.remove(graspedItem)
                         if (graspedItem != "none") {
@@ -448,6 +547,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
                         lastFpsTimestamp = now
                     }
 
+                    // 6. Update Overlay
                     runOnUiThread {
                         if (!isActivityPaused && !isWideScanning) {
                             overlayView.setTrackedResults(
@@ -501,7 +601,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
             }
             socket.send(jsonArray.toString())
         } catch (e: Exception) {
-            // Ignore
+            // Ignore socket telemetry errors
         }
     }
 
@@ -795,6 +895,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
 
     private fun stopAllHaptics() {
         try {
+            openVocabTracker.clearTarget()
             hapticArbitrator.stopAllFeedback()
         } catch (e: Exception) {
             Log.e("HANS", "Failed to stop haptics", e)

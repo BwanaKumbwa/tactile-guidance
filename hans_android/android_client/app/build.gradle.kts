@@ -66,7 +66,7 @@ android {
 
         buildConfigField("String", "API_URL", "\"${envMap["API_URL"] ?: ""}\"")
         buildConfigField("String", "API_KEY", "\"${envMap["API_KEY"] ?: ""}\"")
-        buildConfigField("String", "LLM_MODEL", "\"${envMap["LLM_MODEL"] ?: "openai/gpt-oss-120b"}\"")
+        buildConfigField("String", "LLM_MODEL", "\"${envMap["LLM_MODEL"] ?: "Qwen/Qwen3.5-122B-A10B-FP8"}\"")
     }
 
     // Flavor configuration

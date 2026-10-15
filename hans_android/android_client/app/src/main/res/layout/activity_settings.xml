@@ -254,6 +254,32 @@
                 android:src="@drawable/ic_forward"/>
 
         </RelativeLayout>
+
+        <!-- Save Debug Photos Toggle -->
+        <RelativeLayout
+            android:id="@+id/layout_save_debug"
+            android:layout_width="match_parent"
+            android:layout_height="60dp"
+            android:layout_marginTop="16dp"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_centerVertical="true"
+                android:text="Save Debug Photos"
+                android:textColor="#FFFFFF"
+                android:textSize="18sp" />
+
+            <com.google.android.material.switchmaterial.SwitchMaterial
+                android:id="@+id/switchSaveDebug"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentEnd="true"
+                android:layout_centerVertical="true" />
+        </RelativeLayout>
+
     </com.google.android.material.card.MaterialCardView>
 
     <!-- BOTTOM NAV -->
