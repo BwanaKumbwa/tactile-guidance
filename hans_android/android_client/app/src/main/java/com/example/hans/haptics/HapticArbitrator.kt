@@ -147,7 +147,11 @@ class HapticArbitrator(
         // -----------------------------------------------------------------
         if (usePhoneHaptics && phoneHaptics != null) {
             stopBracelet()
-            phoneHaptics.updateProximityFeedback(distance3D)
+            // distance3D controls pulse frequency; distance2D controls pulse sharpness
+            phoneHaptics.updateTargetedFeedback(
+                distanceMeters = distance3D,
+                alignmentError2D = distance2D
+            )
             return GuidanceState(true, activeTarget, targetDepth, 0f, "phone_haptics", false)
         }
 
