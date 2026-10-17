@@ -76,7 +76,14 @@ Examples:
         action="store_true",
         help="Use UniDepth (metric) instead of MiDaS (faster but relative). Only with --depth-fallback"
     )
-    
+
+    parser.add_argument(
+        "--participant",
+        "-p",
+        type=int,
+        default=1,
+        help="Participant ID for experiment logging (integer). Default: 1"
+    )
 
     return parser.parse_args()
 
@@ -86,19 +93,33 @@ DEPLOYMENT_MODE = True
 DEBUG_MODE = False
 DEPTH_FALLBACK = False
 METRIC_DEPTH = False
+# Default participant used if CLI not provided; updated in init_config()
+START_PARTICIPANT = 1
+RECOVERY_CONDITION = int(os.getenv("HANS_RECOVERY_CONDITION", "1"))
+
+if RECOVERY_CONDITION not in (1, 2):
+    raise ValueError(
+        f"Invalid HANS_RECOVERY_CONDITION={RECOVERY_CONDITION}. Allowed values: 1 or 2."
+    )
+
 
 def init_config():
-    global DEPLOYMENT_MODE, DEBUG_MODE, DEPTH_FALLBACK, METRIC_DEPTH
+    global DEPLOYMENT_MODE, DEBUG_MODE, DEPTH_FALLBACK, METRIC_DEPTH, RECOVERY_CONDITION, START_PARTICIPANT
     args = parse_arguments()
     if args.mode == 'testing':
         DEPLOYMENT_MODE = False
     DEBUG_MODE = args.debug
     DEPTH_FALLBACK = args.depth_fallback
     METRIC_DEPTH = args.metric_depth
-    
+
+    # Respect CLI participant if provided
+    START_PARTICIPANT = int(args.participant)
+
     print(f"🔧 Configuration:")
+    print(f"   Participant: {START_PARTICIPANT}")
     print(f"   Visual Mode: {DEPLOYMENT_MODE}")
     print(f"   Debug Mode: {'ON' if DEBUG_MODE else 'OFF'}")
+    print(f"   Recovery Condition: {RECOVERY_CONDITION} — {'Unguided exploration' if RECOVERY_CONDITION == 1 else 'Similarity-guided exploration'}")
     print(f"   Depth Fallback: {'ENABLED' if DEPTH_FALLBACK else 'DISABLED'}")
     if DEPTH_FALLBACK:
         depth_type = "UniDepth (metric)" if METRIC_DEPTH else "MiDaS (relative)"
@@ -192,6 +213,8 @@ def run_ai_logic():
     print("🧠 AI Vision Thread Started")
     android_loader = AndroidSource(frame_queue, img_size=640)
     args = SimArgs()
+    # Use participant passed via CLI / init_config
+    args.participant = START_PARTICIPANT
     
     # ✅ 1. Create TWO distinct routing controllers
     belt_vbc = VirtualBeltController(result_queue, target_device="belt")

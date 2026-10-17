@@ -3,6 +3,7 @@ from __future__ import annotations
 import queue
 import sys
 import time
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -71,6 +72,12 @@ class ExperimentRunner:
 
         # Data accumulator
         self._output_data: List[list] = []
+
+        # Experimental metadata
+        # Read RECOVERY_CONDITION from environment to avoid cross-imports
+        self._recovery_condition: int = int(os.getenv("HANS_RECOVERY_CONDITION", "1"))
+        # Simple trial counter for CSV rows (1-based)
+        self._trial_counter: int = 0
 
     # Main entry point (blocking — must be called from the main thread)
 
@@ -218,7 +225,14 @@ class ExperimentRunner:
         if bc is None:
             return
 
+        # Increment trial counter (1-based)
+        self._trial_counter += 1
+
+        # Compose row with added participant, trial number, and recovery condition
         row = [
+            self._participant,
+            self._trial_counter,
+            self._recovery_condition,
             self._pipeline.class_target_obj,
             self._trial_start_time,
             bc.navigation_time,
@@ -252,5 +266,15 @@ class ExperimentRunner:
         Path(self._output_path).mkdir(parents=True, exist_ok=True)
         csv_path = (f'{self._output_path}'
                     f'{self._condition}_participant_{self._participant}.csv')
-        pd.DataFrame(self._output_data).to_csv(csv_path, index=False)
+        # Write DataFrame with explicit column names for clarity
+        columns = [
+            'participant', 'trial_number', 'recovery_condition',
+            'class_target_obj', 'trial_start_time',
+            'navigation_time', 'freezing_time', 'grasping_time', 'trial_end_time',
+            'last_pressed_key', 'target_detections_list', 'target_confidence_list',
+            'target_class_track_ids', 'target_object_track_ids', 'target_position',
+            'hand_confidence_list', 'hand_position'
+        ]
+        df = pd.DataFrame(self._output_data, columns=columns)
+        df.to_csv(csv_path, index=False)
         print(f'[Experiment] Data saved → {csv_path}')
