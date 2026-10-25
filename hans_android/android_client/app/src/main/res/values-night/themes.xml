@@ -1,7 +1,23 @@
-<resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Base application theme. -->
-    <style name="Base.Theme.Hans" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Customize your dark theme here. -->
-        <!-- <item name="colorPrimary">@color/my_dark_primary</item> -->
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <style name="Theme.Hans" parent="Theme.Material3.DayNight.NoActionBar">
+
+        <!-- PRIMARY -->
+        <item name="colorPrimary">#7ED957</item>
+        <item name="colorOnPrimary">@android:color/black</item>
+
+        <!-- SECONDARY -->
+        <item name="colorSecondary">#65C466</item>
+
+        <!-- BACKGROUND -->
+        <item name="android:colorBackground">@color/app_background</item>
+        <item name="android:windowBackground">@color/app_background</item>
+
     </style>
+
+    <style name="BottomNavigationViewStyle">
+        <item name="itemActiveIndicatorStyle">@null</item>
+    </style>
+
 </resources>

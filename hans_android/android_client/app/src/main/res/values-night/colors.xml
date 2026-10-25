@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="light_green">#EAF3DE</color>
+    <color name="outline_red">#B3261E</color>
+    <color name="light_red">#FDE2E1</color>
+    <color name="app_background">#34383D</color>
+    <color name="light_grey">#42464b</color>
+    <color name="feelspace">#4EB92B</color>
+
+    <!-- ICON DARK MODE -->
+    <color name="bluetooth_icon">#FFFFFF</color>
+    <color name="indicator">#EAF3DE</color>
+    <color name="progress_bar">#4F5763</color>
+    <color name="icon">#245C33</color>
+    <color name="selected_icon">#EAF3DE</color>
+
+    <!-- TEXT DARK MODE -->
+    <color name="text_primary">#FFFFFFFF</color>
+    <color name="text_secondary">#CDC8BC</color>
+    <color name="text_subtitle">#245C33</color>
+    <color name="text_select">#FF000000</color>
+
+    <!-- CARD DARK MODE -->
+    <color name="border">#EAF3DE</color>
+    <color name="card_fill">#245C33</color>
+
+    <!-- BUTTON LIGHT MODE -->
+    <color name="button_outline">#EAF3DE</color>
+    <color name="button_fill">#245C33</color>
+    <color name="button_text">#FF000000</color>
+
+    <!-- BOTTOM NAVIGATION -->
+    <color name="bottom_nav_bg">#4A535C</color>
+    <color name="bottom_nav_selected">#4EB92B</color>
+    <color name="bottom_nav_not_selected">#FFFFFFFF</color>
+    <color name="bottom_nav_text">#FFFFFFFF</color>
+    <color name="bottom_nav_text_not_selected">#FFFFFFFF</color>
+
+</resources>

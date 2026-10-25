@@ -1,236 +1,471 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout
+<LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/white">
+    android:orientation="vertical"
+    android:background="?android:attr/colorBackground">
 
-    <!-- Title -->
+    <!-- TITLE -->
     <TextView
         android:id="@+id/textIntensity"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:layout_marginTop="70dp"
+        android:layout_marginStart="40dp"
         android:text="@string/intensity"
-        android:textSize="25sp"
-        android:textStyle="bold"
-        android:textColor="@color/black"
-        android:layout_marginTop="100dp"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"/>
+        android:textColor="@color/text_primary"
+        android:textSize="26sp"
+        android:textStyle="bold" />
 
-    <!-- TOP INTENSITY -->
+    <!-- BRACELET -->
     <TextView
-        android:id="@+id/topLabel"
+        android:id="@+id/intensityBracelet"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Top"
-        android:textSize="24sp"
-        android:textStyle="bold"
-        app:layout_constraintTop_toBottomOf="@id/textIntensity"
-        app:layout_constraintStart_toStartOf="parent"
-        android:layout_marginStart="30dp"
-        android:layout_marginTop="50dp"/>
+        android:text="@string/intensity_bracelet"
+        android:textSize="16sp"
+        android:textColor="@color/text_secondary"
+        android:layout_marginStart="40dp"
+        android:layout_marginTop="8dp" />
 
-    <SeekBar
-        android:id="@+id/seekTop"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="30dp"
-        android:layout_marginEnd="80dp"
-        android:max="100"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="1.0"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/topLabel" />
-
-    <EditText
-        android:id="@+id/topValue"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:inputType="number"
-        android:text="0"
-        android:textSize="24sp"
-        app:layout_constraintTop_toTopOf="@id/seekTop"
-        app:layout_constraintBottom_toBottomOf="@id/seekTop"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginEnd="30dp"/>
-
-
-    <!-- RIGHT INTENSITY -->
-    <TextView
-        android:id="@+id/rightLabel"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Right"
-        android:textSize="24sp"
-        android:textStyle="bold"
-        app:layout_constraintTop_toBottomOf="@id/seekTop"
-        app:layout_constraintStart_toStartOf="parent"
-        android:layout_marginStart="30dp"
-        android:layout_marginTop="50dp"/>
-
-    <SeekBar
-        android:id="@+id/seekRight"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:max="100"
-        app:layout_constraintTop_toBottomOf="@id/rightLabel"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginStart="30dp"
-        android:layout_marginEnd="80dp"/>
-
-    <EditText
-        android:id="@+id/rightValue"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:inputType="number"
-        android:text="0"
-        android:textSize="24sp"
-        app:layout_constraintTop_toTopOf="@id/seekRight"
-        app:layout_constraintBottom_toBottomOf="@id/seekRight"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginEnd="30dp"/>
-
-    <!-- BOTTOM INTENSITY -->
-    <TextView
-        android:id="@+id/bottomLabel"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Bottom"
-        android:textSize="24sp"
-        android:textStyle="bold"
-        app:layout_constraintTop_toBottomOf="@id/seekRight"
-        app:layout_constraintStart_toStartOf="parent"
-        android:layout_marginStart="30dp"
-        android:layout_marginTop="50dp"/>
-
-    <SeekBar
-        android:id="@+id/seekBottom"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:max="100"
-        app:layout_constraintTop_toBottomOf="@id/bottomLabel"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginStart="30dp"
-        android:layout_marginEnd="80dp"/>
-
-    <EditText
-        android:id="@+id/bottomValue"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:inputType="number"
-        android:text="0"
-        android:textSize="24sp"
-        app:layout_constraintTop_toTopOf="@id/seekBottom"
-        app:layout_constraintBottom_toBottomOf="@id/seekBottom"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginEnd="30dp"/>
-
-
-    <!-- LEFT INTENSITY -->
-    <TextView
+    <!-- LEFT -->
+    <LinearLayout
         android:id="@+id/leftLabel"
+        android:layout_width="match_parent"
+        android:layout_height="60dp"
+        android:layout_marginHorizontal="40dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <ImageView
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@drawable/circle_green"
+            android:padding="8dp"
+            android:src="@drawable/ic_left"
+            app:tint="@color/icon" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="12dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/left"
+                android:textColor="@color/text_primary"
+                android:textSize="18sp" />
+
+            <ProgressBar
+                android:id="@+id/leftProgress"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="6dp"
+                android:layout_marginTop="6dp"
+                android:max="100"
+                android:progress="0"
+                android:progressDrawable="@drawable/progress_green" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/leftValue"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/zero"
+            android:textColor="@color/selected_icon"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginHorizontal="40dp"
+        android:layout_marginVertical="10dp"
+        android:background="@color/selected_icon" />
+
+    <!-- DOWN -->
+    <LinearLayout
+        android:id="@+id/bottomLabel"
+        android:layout_width="match_parent"
+        android:layout_height="60dp"
+        android:layout_marginHorizontal="40dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <ImageView
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@drawable/circle_green"
+            android:padding="8dp"
+            android:src="@drawable/ic_down"
+            app:tint="@color/icon" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="12dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/down"
+                android:textColor="@color/text_primary"
+                android:textSize="18sp" />
+
+            <ProgressBar
+                android:id="@+id/downProgress"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="6dp"
+                android:layout_marginTop="6dp"
+                android:max="100"
+                android:progress="0"
+                android:progressDrawable="@drawable/progress_green" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/bottomValue"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/zero"
+            android:textColor="@color/selected_icon"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginHorizontal="40dp"
+        android:layout_marginVertical="10dp"
+        android:background="@color/selected_icon" />
+
+    <!-- RIGHT -->
+    <LinearLayout
+        android:id="@+id/rightLabel"
+        android:layout_width="match_parent"
+        android:layout_height="60dp"
+        android:layout_marginHorizontal="40dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <ImageView
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@drawable/circle_green"
+            android:padding="8dp"
+            android:src="@drawable/ic_right"
+            app:tint="@color/icon" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="12dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/right"
+                android:textColor="@color/text_primary"
+                android:textSize="18sp" />
+
+            <ProgressBar
+                android:id="@+id/rightProgress"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="6dp"
+                android:layout_marginTop="6dp"
+                android:max="100"
+                android:progress="0"
+                android:progressDrawable="@drawable/progress_green" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/rightValue"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/zero"
+            android:textColor="@color/selected_icon"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginHorizontal="40dp"
+        android:layout_marginVertical="10dp"
+        android:background="@color/selected_icon" />
+
+    <!-- TOP -->
+    <LinearLayout
+        android:id="@+id/topLabel"
+        android:layout_width="match_parent"
+        android:layout_height="60dp"
+        android:layout_marginHorizontal="40dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <ImageView
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@drawable/circle_green"
+            android:padding="8dp"
+            android:src="@drawable/ic_top"
+            app:tint="@color/icon" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="12dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/top"
+                android:textColor="@color/text_primary"
+                android:textSize="18sp" />
+
+            <ProgressBar
+                android:id="@+id/topProgress"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="6dp"
+                android:layout_marginTop="6dp"
+                android:max="100"
+                android:progress="0"
+                android:progressDrawable="@drawable/progress_green" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/topValue"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/zero"
+            android:textColor="@color/selected_icon"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginHorizontal="40dp"
+        android:layout_marginVertical="10dp"
+        android:background="@color/selected_icon" />
+
+    <!-- TOP FRONT -->
+    <LinearLayout
+        android:id="@+id/topFrontLabel"
+        android:layout_width="match_parent"
+        android:layout_height="60dp"
+        android:layout_marginHorizontal="40dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <ImageView
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@drawable/circle_green"
+            android:padding="8dp"
+            android:src="@drawable/ic_top_front"
+            app:tint="@color/icon" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="12dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/topFront"
+                android:textColor="@color/text_primary"
+                android:textSize="18sp" />
+
+            <ProgressBar
+                android:id="@+id/topFrontProgress"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="6dp"
+                android:layout_marginTop="6dp"
+                android:max="100"
+                android:progress="0"
+                android:progressDrawable="@drawable/progress_green" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/topFrontValue"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/zero"
+            android:textColor="@color/selected_icon"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginHorizontal="40dp"
+        android:layout_marginVertical="10dp"
+        android:background="@color/selected_icon" />
+
+    <!-- TOP BACK -->
+    <LinearLayout
+        android:id="@+id/topBackLabel"
+        android:layout_width="match_parent"
+        android:layout_height="60dp"
+        android:layout_marginHorizontal="40dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <ImageView
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@drawable/circle_green"
+            android:padding="8dp"
+            android:src="@drawable/ic_top_back"
+            app:tint="@color/icon" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="12dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/topBack"
+                android:textColor="@color/text_primary"
+                android:textSize="18sp" />
+
+            <ProgressBar
+                android:id="@+id/topBackProgress"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="6dp"
+                android:layout_marginTop="6dp"
+                android:max="100"
+                android:progress="0"
+                android:progressDrawable="@drawable/progress_green" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/topBackValue"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/zero"
+            android:textColor="@color/selected_icon"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- BELT TITLE -->
+    <TextView
+        android:id="@+id/intensityBelt"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Left"
-        android:textSize="24sp"
-        android:textStyle="bold"
-        app:layout_constraintTop_toBottomOf="@id/seekBottom"
-        app:layout_constraintStart_toStartOf="parent"
-        android:layout_marginStart="30dp"
-        android:layout_marginTop="50dp"/>
+        android:layout_marginStart="40dp"
+        android:layout_marginTop="10dp"
+        android:text="@string/intensity_belt"
+        android:textColor="@color/text_secondary"
+        android:textSize="16sp" />
 
-    <SeekBar
-        android:id="@+id/seekLeft"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:max="100"
-        app:layout_constraintTop_toBottomOf="@id/leftLabel"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginStart="30dp"
-        android:layout_marginEnd="80dp"/>
+    <!-- BELT -->
+    <LinearLayout
+        android:id="@+id/beltLabel"
+        android:layout_width="match_parent"
+        android:layout_height="60dp"
+        android:layout_marginHorizontal="40dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
 
-    <EditText
-        android:id="@+id/leftValue"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:inputType="number"
-        android:text="0"
-        android:textSize="24sp"
-        app:layout_constraintTop_toTopOf="@id/seekLeft"
-        app:layout_constraintBottom_toBottomOf="@id/seekLeft"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginEnd="30dp"/>
+        <ImageView
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@drawable/circle_green"
+            android:padding="8dp"
+            android:src="@drawable/belt"
+            app:tint="@color/icon" />
 
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="12dp"
+            android:orientation="vertical">
 
-    <!-- Select Button -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/belt"
+                android:textColor="@color/text_primary"
+                android:textSize="18sp" />
+
+            <ProgressBar
+                android:id="@+id/beltProgress"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="6dp"
+                android:layout_marginTop="6dp"
+                android:max="100"
+                android:progress="0"
+                android:progressDrawable="@drawable/progress_green" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/beltValue"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/zero"
+            android:textColor="@color/selected_icon"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- BUTTON -->
     <Button
         android:id="@+id/button_select_intensity"
-        android:layout_width="250dp"
-        android:layout_height="80dp"
-        android:text="@string/select_intensity"
+        android:layout_width="match_parent"
+        android:layout_height="70dp"
+        android:layout_marginHorizontal="24dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="20dp"
+        android:text="@string/set_default"
         android:textSize="20sp"
-        android:textStyle="bold"
-        android:textColor="@color/black"
-        android:backgroundTint="#93EF73"
-        app:layout_constraintBottom_toTopOf="@id/bottomBar"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginBottom="70dp"/>
+        android:textColor="@color/button_text"
+        android:background="@drawable/bg_green_selected"
+        app:backgroundTint="@null" />
 
+    <!-- BOTTOM NAV -->
+    <com.google.android.material.bottomnavigation.BottomNavigationView
+        android:id="@+id/bottomNavigation"
+        style="@style/BottomNavigationViewStyle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/app_background"
+        app:menu="@menu/bottom_nav_menu"
+        app:itemIconTint="@drawable/bottom_nav"
+        app:itemTextColor="@drawable/bottom_nav_text"
+        app:itemRippleColor="@color/app_background"
+        app:itemHorizontalTranslationEnabled="false"
+        app:labelVisibilityMode="labeled" />
 
-    <!-- Bottom Bar -->
-    <View
-        android:id="@+id/bottomBar"
-        android:layout_width="0dp"
-        android:layout_height="100dp"
-        android:background="#4EB92B"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"/>
-
-    <ImageView
-        android:id="@+id/Home"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
-        android:layout_marginStart="60dp"
-        android:layout_marginBottom="40dp"
-        android:alpha="0.5"
-        android:clickable="true"
-        android:focusable="true"
-        android:src="@drawable/home"
-        app:layout_constraintBottom_toBottomOf="@id/bottomBar"
-        app:layout_constraintStart_toStartOf="parent" />
-
-    <ImageView
-        android:id="@+id/Setting"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
-        android:layout_marginEnd="60dp"
-        android:layout_marginBottom="40dp"
-        android:clickable="true"
-        android:focusable="true"
-        android:src="@drawable/setting"
-        app:layout_constraintBottom_toBottomOf="@id/bottomBar"
-        app:layout_constraintEnd_toEndOf="parent" />
-
-    <ImageView
-        android:id="@+id/Camera_command"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
-        android:layout_marginBottom="40dp"
-        android:alpha="0.5"
-        android:clickable="true"
-        android:focusable="true"
-        android:src="@drawable/camera"
-        app:layout_constraintBottom_toBottomOf="@id/bottomBar"
-        app:layout_constraintStart_toEndOf="@id/Home"
-        app:layout_constraintEnd_toStartOf="@id/Setting" />
-
-</androidx.constraintlayout.widget.ConstraintLayout>
+</LinearLayout>
