@@ -184,6 +184,18 @@ If ARCore is enabled, depth maps are estimated using it and sent directly from t
 
 ## Usage
 
+### Android Experiment Controls
+
+With the Android app running in Experiment mode, load the PowerShell helpers from the repository root:
+
+```powershell
+. .\hans_android\android_client\experiment-controls.ps1
+```
+
+Then enter `s`, `r`, `t`, `o`, `y`, `n`, `f`, or `c` to send the matching experiment broadcast through ADB. The helper uses the ARCore package (`com.example.hans.arcore`) by default; set `$env:HANS_PACKAGE` before loading it to use another app package, such as `com.example.hans.noarcore`. If `adb` is not on `PATH`, it checks `ANDROID_SDK_ROOT`, `ANDROID_HOME`, and the default Windows SDK location.
+
+The helper temporarily replaces PowerShell's built-in `r` (`Invoke-History`) alias in the current terminal. Run `Remove-HansExperimentControls` to remove the short commands and restore that alias.
+
 ### Running Tests
 
 To run the full test suite (22 tests):
