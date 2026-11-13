@@ -33,6 +33,35 @@ In Android Studio's PowerShell terminal, from the repository root, dot-source th
 . .\hans_android\android_client\experiment-controls.ps1
 ```
 
-With the app running in Experiment mode, type `s`, `r`, `t`, `o`, `y`, `n`, `f`, or `c` to send the matching command. The helper temporarily replaces PowerShell's built-in `r` (`Invoke-History`) alias; run `Remove-HansExperimentControls` to remove the shortcuts and restore the alias.
+With the app running in Experiment mode, type any command below in the loaded PowerShell terminal. Commands are case-insensitive.
 
-The CSV is written to the app's private `files/experiment_logs/` directory, with a filename based on Participant ID and Condition. Usage mode bypasses the experiment setup and does not create experiment trial logs.
+| Command | Action |
+|---|---|
+| `S` / `s` | Start a trial, reset its recovery and event counts, and record `trial_start_time`. |
+| `R` / `r` | Record recovery success without ending the trial. Sets `recovery_success` to true and saves the latest recovery timestamp in `recovery_success_time`. |
+| `T` / `t` | Increment `wrong_target_count` by one without ending the trial. |
+| `O` / `o` | Increment `overshoot_count` by one without ending the trial. |
+| `Y` / `y` | End the trial as `success` and record `trial_end_time`. |
+| `N` / `n` | End the trial as `participant_failure` and record `trial_end_time`. |
+| `F` / `f` | End the trial as `system_failure` and record `trial_end_time`. |
+| `C` / `c` | Save and close the app without recording `trial_end_time`. If used during an active trial, that trial remains in the CSV with a blank outcome and end time; it is no longer active. |
+
+`R`, `T`, and `O` are ignored unless a trial is active. A trial can be ended only once; another end command with no active trial is ignored. Starting while a trial is already active is also ignored. Logcat (tag `ExperimentLogger`) reports accepted actions and ignored commands.
+
+The CSV is written to the app's private `files/experiment_logs/` directory as `participant_<ID>_condition_<condition>.csv`. To access it, use Android Studio's Device Explorer or `adb shell run-as <applicationId> cat files/experiment_logs/<filename>`. Each event is saved immediately; the app also keeps a recoverable copy of trial state in private `SharedPreferences`.
+
+| Column | Stored value |
+|---|---|
+| `participant_id` | Participant ID entered during experiment setup. |
+| `condition` | Selected condition number (0, 1, or 2). |
+| `trial_number` | Automatically incremented trial number for that participant and condition. |
+| `target_object` | Current tracked target when the trial starts; `NA` if no target is active. |
+| `trial_start_time` | Trial start timestamp in UTC ISO 8601 format. |
+| `recovery_success` | `true` if `R`/`r` was pressed during the trial; otherwise `false`. |
+| `recovery_success_time` | UTC ISO 8601 time of the latest `R`/`r` press; blank if none. |
+| `wrong_target_count` | Number of `T`/`t` presses in the trial. |
+| `overshoot_count` | Number of `O`/`o` presses in the trial. |
+| `outcome` | `success`, `participant_failure`, or `system_failure`; blank if not ended with `Y`, `N`, or `F`. |
+| `trial_end_time` | UTC ISO 8601 timestamp when ended with `Y`, `N`, or `F`; blank if not ended. |
+
+The helper temporarily replaces PowerShell's built-in `r` (`Invoke-History`) alias; run `Remove-HansExperimentControls` to remove the shortcuts and restore the alias. Usage mode bypasses experiment setup and does not create experiment trial logs.
