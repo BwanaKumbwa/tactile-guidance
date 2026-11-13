@@ -7,6 +7,20 @@
     <string name="set_default">Set as a default</string>
     <string name="bar">_______________________________</string>
 
+    <!-- EXPERIMENT SETUP -->
+    <string name="choose_mode">Choose a mode</string>
+    <string name="experiment">Experiment</string>
+    <string name="usage">Usage</string>
+    <string name="experiment_setup">Experiment setup</string>
+    <string name="participant_id">Participant ID</string>
+    <string name="enter_participant_id">Enter participant ID</string>
+    <string name="condition">Condition</string>
+    <string name="condition_0">Condition 0</string>
+    <string name="condition_1">Condition 1</string>
+    <string name="condition_2">Condition 2</string>
+    <string name="start_experiment">Start Experiment</string>
+    <string name="participant_id_required">Enter a participant ID</string>
+    <string name="condition_required">Select a condition</string>
 
     <!-- BLUETOOTH CONNECTION -->
     <string name="connect_bracelet">Connect Bracelet</string>

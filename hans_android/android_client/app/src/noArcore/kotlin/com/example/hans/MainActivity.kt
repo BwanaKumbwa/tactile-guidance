@@ -86,6 +86,9 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private val Intensity_Prefs = "FullIntensityPrefs"
 
     private val Pattern_Prefs = "PatternPrefs"
+    private val experimentCommandControls by lazy {
+        ExperimentCommandControls(this) { "NA" }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -168,6 +171,16 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 restartListening()
             }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        experimentCommandControls.start()
+    }
+
+    override fun onStop() {
+        experimentCommandControls.stop()
+        super.onStop()
     }
 
     private fun initSystem() {

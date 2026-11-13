@@ -110,6 +110,9 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
 
     // On-Device AI Brain (Direct LLM Client)
     private var localBrain: LocalHansBrain? = null
+    private val experimentCommandControls by lazy {
+        ExperimentCommandControls(this) { localBrain?.activeTarget ?: "NA" }
+    }
 
     // Haptic Arbitration & Phone Vibrator
     private lateinit var hapticArbitrator: HapticArbitrator
@@ -213,6 +216,11 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
             overlayParams.height = targetHeight
             overlayView.layoutParams = overlayParams
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        experimentCommandControls.start()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -653,6 +661,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener, GLSurface
 
     override fun onStop() {
         stopAllHaptics()
+        experimentCommandControls.stop()
         super.onStop()
     }
 
